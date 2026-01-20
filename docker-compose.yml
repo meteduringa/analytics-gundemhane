@@ -1,0 +1,57 @@
+  version: "3.8"
+
+  services:
+    app:
+      build: .
+      environment:
+        NODE_ENV: production
+        DATABASE_URL: postgresql://analytics:Analytics2025Pass@postgres:5432/analytics
+        AUTH_SECRET: change-me
+        NEXTAUTH_URL: https://analytics.gundemhane.com
+        NEXT_PUBLIC_HOST_URL: https://analytics.gundemhane.com
+        REDIS_URL: redis://redis:6379
+        TZ: Europe/Istanbul
+      dns:
+        - 1.1.1.1
+        - 8.8.8.8
+      depends_on:
+        - postgres
+        - redis
+      restart: unless-stopped
+
+    postgres:
+      image: postgres:16
+      environment:
+        POSTGRES_DB: analytics
+        POSTGRES_USER: analytics
+        POSTGRES_PASSWORD: Analytics2025Pass
+        TZ: Europe/Istanbul
+      volumes:
+        - postgres_data:/var/lib/postgresql/data
+      restart: unless-stopped
+
+    redis:
+      image: redis:7
+      command: ["redis-server", "--appendonly", "yes"]
+      volumes:
+        - redis_data:/data
+      restart: unless-stopped
+
+    caddy:
+      image: caddy:2
+      ports:
+        - "80:80"
+        - "443:443"
+      volumes:
+        - ./Caddyfile:/etc/caddy/Caddyfile
+        - caddy_data:/data
+        - caddy_config:/config
+      depends_on:
+        - app
+      restart: unless-stopped
+
+  volumes:
+    postgres_data:
+    redis_data:
+    caddy_data:
+    caddy_config:

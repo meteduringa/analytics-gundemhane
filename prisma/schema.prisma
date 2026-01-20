@@ -1,0 +1,116 @@
+  generator client {
+    provider   = "prisma-client-js"
+    engineType = "binary"
+  }
+
+  datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+  }
+
+  enum UserRole {
+    ADMIN
+    CUSTOMER
+  }
+
+  enum AnalyticsEventType {
+    PAGEVIEW
+    EVENT
+  }
+
+  enum AnalyticsAlarmType {
+    EVENT_THRESHOLD
+    ONLINE_BELOW
+  }
+
+  model User {
+    id           String               @id @default(cuid())
+    email        String               @unique
+    passwordHash String?
+    name         String?
+    role         UserRole             @default(CUSTOMER)
+    createdAt    DateTime             @default(now())
+    updatedAt    DateTime             @updatedAt
+    userWebsites AnalyticsUserWebsite[]
+  }
+
+  model AnalyticsWebsite {
+    id             String                 @id @default(uuid())
+    name           String
+    allowedDomains String[]
+    createdAt      DateTime               @default(now())
+    updatedAt      DateTime               @updatedAt
+    userWebsites   AnalyticsUserWebsite[]
+    events         AnalyticsEvent[]
+    sessions       AnalyticsSession[]
+    alarms         AnalyticsAlarm[]
+
+    @@map("analytics_websites")
+  }
+
+  model AnalyticsUserWebsite {
+    userId    String
+    websiteId String
+    user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+    website   AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+    createdAt DateTime         @default(now())
+
+    @@id([userId, websiteId])
+    @@map("analytics_user_websites")
+  }
+
+  model AnalyticsEvent {
+    id              String             @id @default(uuid())
+    websiteId       String
+    type            AnalyticsEventType
+    eventName       String?
+    eventData       Json?
+    visitorId       String
+    sessionId       String
+    url             String
+    referrer        String?
+    screen          String?
+    language        String?
+    userAgent       String?
+    clientTimestamp DateTime?
+    createdAt       DateTime           @default(now())
+    website         AnalyticsWebsite   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+    @@index([websiteId, createdAt])
+    @@index([websiteId, sessionId])
+    @@index([websiteId, visitorId])
+    @@index([websiteId, type, createdAt])
+    @@map("analytics_events")
+  }
+
+  model AnalyticsSession {
+    id         String            @id @default(uuid())
+    websiteId  String
+    sessionId  String
+    visitorId  String
+    startedAt  DateTime          @default(now())
+    lastSeenAt DateTime          @default(now())
+    website    AnalyticsWebsite  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+    @@unique([websiteId, sessionId])
+    @@index([websiteId, visitorId])
+    @@index([websiteId, lastSeenAt])
+    @@map("analytics_sessions")
+  }
+
+  model AnalyticsAlarm {
+    id              String             @id @default(uuid())
+    websiteId       String
+    name            String
+    type            AnalyticsAlarmType
+    threshold       Int
+    windowSeconds   Int
+    isActive        Boolean            @default(true)
+    lastTriggeredAt DateTime?
+    createdAt       DateTime           @default(now())
+    updatedAt       DateTime           @updatedAt
+    website         AnalyticsWebsite   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+    @@index([websiteId, isActive])
+    @@map("analytics_alarms")
+  }
