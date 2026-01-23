@@ -2,18 +2,20 @@
 
 import { Diamond, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { PropsWithChildren } from "react";
 
 const menuItems = [
-  { label: "Anasayfa", href: "/panel", active: true },
-  { label: "Ziyaretçi (Anlık)", href: "/panel", active: false },
-  { label: "Ziyaretçi (Günlük)", href: "/panel", active: false },
-  { label: "Ayarlar", href: "/panel", active: false },
+  { label: "Anasayfa", href: "/panel" },
+  { label: "Ziyaretçi (Anlık)", href: "/panel" },
+  { label: "Ziyaretçi (Günlük)", href: "/panel" },
+  { label: "Ayarlar", href: "/panel/ayarlar" },
 ];
 
 type LayoutProps = PropsWithChildren;
 
 const DashboardLayout = ({ children }: LayoutProps) => {
+  const pathname = usePathname();
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="sticky top-0 z-20">
@@ -47,12 +49,14 @@ const DashboardLayout = ({ children }: LayoutProps) => {
             MENU
           </p>
           <nav className="mt-6 flex flex-col gap-3 text-sm font-semibold text-slate-800">
-            {menuItems.map((item) => (
+            {menuItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
               <Link
                 href={item.href}
                 key={item.label}
                 className={`flex items-center justify-between rounded-2xl px-4 py-3 transition ${
-                  item.active
+                  isActive
                     ? "bg-slate-100 text-slate-900 shadow-sm shadow-slate-900/10"
                     : "text-slate-500 hover:bg-slate-100"
                 }`}
@@ -60,7 +64,8 @@ const DashboardLayout = ({ children }: LayoutProps) => {
                 <span>{item.label}</span>
                 <Menu className="h-3 w-3" />
               </Link>
-            ))}
+              );
+            })}
           </nav>
         </aside>
 
