@@ -109,18 +109,28 @@ export async function GET(request: Request) {
   });
 
   const dailyRange = getIstanbulDayRange();
-  const dailyEvents = await prisma.analyticsEvent.findMany({
+  const dailySessions = await prisma.analyticsSession.findMany({
     where: {
       websiteId,
-      type: "PAGEVIEW",
-      createdAt: {
+      startedAt: {
         gte: dailyRange.start,
         lte: dailyRange.end,
       },
     },
-    select: { visitorId: true },
-    distinct: ["visitorId"],
+    select: {
+      visitorId: true,
+      startedAt: true,
+      lastSeenAt: true,
+    },
   });
+
+  const dailyFiltered = hideShortReads
+    ? dailySessions.filter((session) => {
+        const duration =
+          (session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000;
+        return duration >= 1;
+      })
+    : dailySessions;
 
   const now = new Date();
   const liveThreshold = new Date(now.getTime() - 5 * 60 * 1000);
@@ -129,15 +139,22 @@ export async function GET(request: Request) {
       websiteId,
       lastSeenAt: { gte: liveThreshold },
     },
-    select: { visitorId: true },
-    distinct: ["visitorId"],
+    select: { visitorId: true, startedAt: true, lastSeenAt: true },
   });
+
+  const liveFiltered = hideShortReads
+    ? liveSessions.filter((session) => {
+        const duration =
+          (session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000;
+        return duration >= 1;
+      })
+    : liveSessions;
 
   return NextResponse.json({
     totalPageviews,
     totalDuration,
     avgDuration,
-    dailyUniqueVisitors: dailyEvents.length,
-    liveVisitors: liveSessions.length,
+    dailyUniqueVisitors: new Set(dailyFiltered.map((s) => s.visitorId)).size,
+    liveVisitors: new Set(liveFiltered.map((s) => s.visitorId)).size,
   });
 }
