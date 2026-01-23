@@ -21,11 +21,9 @@ const formatDateInput = (date: Date) => {
 
 const PanelPage = () => {
   const router = useRouter();
-  const [startDate, setStartDate] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 6);
-    return formatDateInput(date);
-  });
+  const [startDate, setStartDate] = useState(() =>
+    formatDateInput(new Date())
+  );
   const [endDate, setEndDate] = useState(formatDateInput(new Date()));
   const [hideShortReads, setHideShortReads] = useState(true);
   const [ready, setReady] = useState(false);

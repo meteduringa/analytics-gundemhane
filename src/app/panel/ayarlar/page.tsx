@@ -112,6 +112,10 @@ const SettingsPage = () => {
   const [error, setError] = useState("");
   const [snippet, setSnippet] = useState("");
   const [inlineSnippet, setInlineSnippet] = useState("");
+  const [sites, setSites] = useState<
+    { id: string; name: string; allowedDomains: string[] }[]
+  >([]);
+  const [sitesLoading, setSitesLoading] = useState(false);
   const [createdUser, setCreatedUser] = useState<{
     email: string;
     password: string;
@@ -134,6 +138,27 @@ const SettingsPage = () => {
     }
     setUser(parsed);
   }, [router]);
+
+  useEffect(() => {
+    const loadSites = async () => {
+      if (!user) return;
+      setSitesLoading(true);
+      try {
+        const params = new URLSearchParams({
+          userId: user.id,
+          role: user.role,
+        });
+        const response = await fetch(`/api/panel/sites?${params.toString()}`);
+        const payload = await response.json();
+        if (response.ok) {
+          setSites(payload.sites ?? []);
+        }
+      } finally {
+        setSitesLoading(false);
+      }
+    };
+    loadSites();
+  }, [user]);
 
   const normalizedDomain = useMemo(() => {
     if (!siteUrl) return "";
@@ -187,6 +212,7 @@ const SettingsPage = () => {
       const inline = buildInlineSnippet(websiteId);
       setSnippet(external);
       setInlineSnippet(inline);
+      setSites((prev) => [payload.website, ...prev]);
       if (payload.user?.email) {
         setCreatedUser({ email: payload.user.email, password: userPassword });
       }
@@ -372,6 +398,74 @@ const SettingsPage = () => {
             </div>
           </div>
         </form>
+
+        <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                Ekli Siteler
+              </p>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Takip Edilen Siteler
+              </h2>
+            </div>
+            <span className="text-xs text-slate-400">
+              {sitesLoading ? "Yükleniyor..." : `${sites.length} site`}
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {sites.length === 0 && !sitesLoading && (
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                Henüz site eklenmedi.
+              </div>
+            )}
+            {sites.map((site) => (
+              <div
+                key={site.id}
+                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {site.name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {site.allowedDomains.join(", ")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopy(buildExternalSnippet(site.id), "external")
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600"
+                    >
+                      <Clipboard className="h-3 w-3" />
+                      Script Kopyala
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopy(buildInlineSnippet(site.id), "inline")
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600"
+                    >
+                      <Clipboard className="h-3 w-3" />
+                      Inline Kopyala
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 text-[11px] text-slate-500">
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    Website ID: <span className="font-semibold">{site.id}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </DashboardLayout>
   );
