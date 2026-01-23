@@ -33,6 +33,7 @@ const DashboardLayout = ({ children }: LayoutProps) => {
               className="inline-flex items-center gap-2 rounded-full border border-white/60 px-4 py-1 text-sm font-semibold text-white transition hover:bg-white/10"
               onClick={() => {
                 window.localStorage.removeItem("auth");
+                window.localStorage.removeItem("user");
                 window.location.href = "/login";
               }}
             >

@@ -4,7 +4,6 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import FiltersBar from "@/components/dashboard/FiltersBar";
 import StatsCard from "@/components/dashboard/StatsCard";
 import { formatDuration } from "@/lib/formatDuration";
-import { visitEvents } from "@/lib/mockVisits";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -20,19 +19,6 @@ const formatDateInput = (date: Date) => {
   return date.toISOString().split("T")[0];
 };
 
-const getIstanbulDayRange = (date = new Date()) => {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Istanbul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const dayString = formatter.format(date);
-  const start = new Date(`${dayString}T00:00:00+03:00`).getTime();
-  const end = new Date(`${dayString}T23:59:59+03:00`).getTime();
-  return { start, end };
-};
-
 const PanelPage = () => {
   const router = useRouter();
   const [startDate, setStartDate] = useState(() => {
@@ -43,18 +29,37 @@ const PanelPage = () => {
   const [endDate, setEndDate] = useState(formatDateInput(new Date()));
   const [hideShortReads, setHideShortReads] = useState(true);
   const [ready, setReady] = useState(false);
-  const [liveWindowStart, setLiveWindowStart] = useState(
-    () => Date.now() - 5 * 60 * 1000
-  );
+  const [user, setUser] = useState<{
+    id: string;
+    email: string;
+    name?: string | null;
+    role: "ADMIN" | "CUSTOMER";
+  } | null>(null);
+  const [sites, setSites] = useState<
+    { id: string; name: string; allowedDomains: string[] }[]
+  >([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>("");
+  const [metrics, setMetrics] = useState<{
+    totalPageviews: number;
+    totalDuration: number;
+    dailyUniqueVisitors: number;
+    liveVisitors: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const isAuthorized =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem("auth") === "1";
+    if (typeof window === "undefined") return;
+    const isAuthorized = window.localStorage.getItem("auth") === "1";
     if (!isAuthorized) {
       router.replace("/login");
       return;
     }
+    const rawUser = window.localStorage.getItem("user");
+    if (!rawUser) {
+      router.replace("/login");
+      return;
+    }
+    setUser(JSON.parse(rawUser));
     const frame = window.requestAnimationFrame(() => {
       setReady(true);
     });
@@ -62,62 +67,48 @@ const PanelPage = () => {
   }, [router]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setLiveWindowStart(Date.now() - 5 * 60 * 1000);
-    }, 30 * 1000);
-    return () => window.clearInterval(interval);
-  }, []);
+    const loadSites = async () => {
+      if (!user) return;
+      const params = new URLSearchParams({
+        userId: user.id,
+        role: user.role,
+      });
+      const response = await fetch(`/api/panel/sites?${params.toString()}`);
+      const payload = await response.json();
+      if (response.ok) {
+        setSites(payload.sites ?? []);
+        if (!selectedSiteId && payload.sites?.length) {
+          setSelectedSiteId(payload.sites[0].id);
+        }
+      }
+    };
+    loadSites();
+  }, [selectedSiteId, user]);
 
-  const filteredEvents = useMemo(() => {
-    const startTs = parseFilterDate(startDate);
-    const endTs = parseFilterDate(endDate, true);
-    return visitEvents.filter((event) => {
-      const timestamp = new Date(event.timestamp).getTime();
-      if (startTs && timestamp < startTs) {
-        return false;
+  useEffect(() => {
+    const loadMetrics = async () => {
+      if (!selectedSiteId) return;
+      setLoading(true);
+      const params = new URLSearchParams({
+        websiteId: selectedSiteId,
+        start: startDate,
+        end: endDate,
+        hideShortReads: hideShortReads ? "1" : "0",
+      });
+      const response = await fetch(`/api/panel/metrics?${params.toString()}`);
+      const payload = await response.json();
+      if (response.ok) {
+        setMetrics(payload);
       }
-      if (endTs && timestamp > endTs) {
-        return false;
-      }
-      if (hideShortReads && event.durationSec < 1) {
-        return false;
-      }
-      return true;
-    });
-  }, [startDate, endDate, hideShortReads]);
+      setLoading(false);
+    };
+    loadMetrics();
+  }, [endDate, hideShortReads, selectedSiteId, startDate]);
 
-  const totalPageviews = useMemo(
-    () => filteredEvents.reduce((sum, event) => sum + event.pageviewCount, 0),
-    [filteredEvents]
+  const selectedSite = useMemo(
+    () => sites.find((site) => site.id === selectedSiteId),
+    [selectedSiteId, sites]
   );
-
-  const totalDuration = useMemo(
-    () => filteredEvents.reduce((sum, event) => sum + event.durationSec, 0),
-    [filteredEvents]
-  );
-
-  const dailyRange = useMemo(() => getIstanbulDayRange(), []);
-
-  const dailyUniqueVisitors = useMemo(() => {
-    const visitors = new Set<string>();
-    visitEvents.forEach((event) => {
-      const timestamp = new Date(event.timestamp).getTime();
-      if (timestamp >= dailyRange.start && timestamp <= dailyRange.end) {
-        visitors.add(event.visitorId);
-      }
-    });
-    return visitors.size;
-  }, [dailyRange.end, dailyRange.start]);
-
-  const liveEvents = useMemo(() => {
-    return visitEvents.filter(
-      (event) => new Date(event.timestamp).getTime() >= liveWindowStart
-    );
-  }, [liveWindowStart]);
-
-  const liveVisitors = useMemo(() => {
-    return new Set(liveEvents.map((event) => event.visitorId)).size;
-  }, [liveEvents]);
 
   if (!ready) {
     return null;
@@ -133,7 +124,32 @@ const PanelPage = () => {
           <h1 className="text-3xl font-bold text-slate-900">
             Ziyaretçi Özeti
           </h1>
+          {selectedSite && (
+            <p className="text-sm text-slate-500">
+              Seçili site: <span className="font-semibold">{selectedSite.name}</span>
+            </p>
+          )}
         </header>
+
+        <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-xs font-semibold text-slate-500">
+              Site Seçimi
+              <select
+                value={selectedSiteId}
+                onChange={(event) => setSelectedSiteId(event.target.value)}
+                className="mt-2 w-full min-w-[240px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="">Site seçin</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
 
         <FiltersBar
           startValue={startDate}
@@ -148,28 +164,28 @@ const PanelPage = () => {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard
             title="Anlık Tekil Ziyaretçi"
-            value={`${liveVisitors}`}
+            value={`${metrics?.liveVisitors ?? 0}`}
             detail="Son 5 dakika"
             accent="text-indigo-700"
             tone="bg-indigo-50"
           />
           <StatsCard
             title="Günlük Tekil Ziyaretçi"
-            value={`${dailyUniqueVisitors}`}
+            value={`${metrics?.dailyUniqueVisitors ?? 0}`}
             detail="Bugün"
             accent="text-emerald-700"
             tone="bg-emerald-50"
           />
           <StatsCard
             title="Toplam Görüntülenme"
-            value={`${totalPageviews}`}
+            value={`${metrics?.totalPageviews ?? 0}`}
             detail="Seçilen tarih aralığı"
             accent="text-slate-900"
             tone="bg-amber-50"
           />
           <StatsCard
             title="Okunma Süresi"
-            value={formatDuration(totalDuration)}
+            value={formatDuration(metrics?.totalDuration ?? 0)}
             detail="Toplam süre"
             accent="text-rose-600"
             tone="bg-rose-50"
@@ -187,33 +203,13 @@ const PanelPage = () => {
               </h2>
             </div>
             <span className="text-xs text-slate-400">
-              {filteredEvents.length} kayıt
+              {loading ? "Yükleniyor..." : "Güncel"}
             </span>
           </div>
           <div className="mt-4 space-y-3">
-            {filteredEvents.slice(0, 4).map((event) => (
-              <div
-                key={event.id}
-                className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm md:flex-row md:items-center"
-              >
-                <div>
-                  <p className="font-semibold text-slate-900">
-                    {event.pageCaption}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {new Date(event.timestamp).toLocaleString("tr-TR")}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-slate-700">
-                    {event.pageviewCount} görüntülenme
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {formatDuration(event.durationSec)}
-                  </p>
-                </div>
-              </div>
-            ))}
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+              Snippet logları geldikçe burada liste görünecek.
+            </div>
           </div>
         </section>
       </div>

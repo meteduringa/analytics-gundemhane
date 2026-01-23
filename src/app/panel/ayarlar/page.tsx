@@ -2,7 +2,8 @@
 
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { Clipboard, ClipboardCheck, Globe, Shield } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const hostUrl =
   process.env.NEXT_PUBLIC_HOST_URL ?? "https://analytics.gundemhane.com";
@@ -94,21 +95,45 @@ const buildInlineSnippet = (websiteId: string) => `<script data-website-id="${we
 })();
 </script>`;
 
-const createWebsiteId = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `site_${Math.random().toString(36).slice(2, 10)}`;
+type StoredUser = {
+  id: string;
+  email: string;
+  name?: string | null;
+  role: "ADMIN" | "CUSTOMER";
 };
 
 const SettingsPage = () => {
+  const router = useRouter();
+  const [user, setUser] = useState<StoredUser | null>(null);
   const [siteName, setSiteName] = useState("");
   const [siteUrl, setSiteUrl] = useState("");
   const [hasCsp, setHasCsp] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [snippet, setSnippet] = useState("");
   const [inlineSnippet, setInlineSnippet] = useState("");
+  const [createdUser, setCreatedUser] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
   const [copied, setCopied] = useState<"external" | "inline" | null>(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [userPassword, setUserPassword] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem("user");
+    if (!raw) {
+      router.replace("/login");
+      return;
+    }
+    const parsed = JSON.parse(raw) as StoredUser;
+    if (parsed.role !== "ADMIN") {
+      router.replace("/panel");
+      return;
+    }
+    setUser(parsed);
+  }, [router]);
 
   const normalizedDomain = useMemo(() => {
     if (!siteUrl) return "";
@@ -120,9 +145,10 @@ const SettingsPage = () => {
     }
   }, [siteUrl]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setCreatedUser(null);
     if (!siteName.trim() || !siteUrl.trim()) {
       setError("Lütfen site adı ve site URL alanlarını doldurun.");
       return;
@@ -131,11 +157,48 @@ const SettingsPage = () => {
       setError("Site URL geçerli değil.");
       return;
     }
-    const websiteId = createWebsiteId();
-    const external = buildExternalSnippet(websiteId);
-    const inline = buildInlineSnippet(websiteId);
-    setSnippet(external);
-    setInlineSnippet(inline);
+    if (userEmail && !userPassword) {
+      setError("Yetkili için şifre zorunludur.");
+      return;
+    }
+    if (!user) {
+      setError("Yetkilendirme gerekli.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch("/api/panel/sites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: siteName,
+          url: siteUrl,
+          actorRole: user.role,
+          userEmail: userEmail || undefined,
+          userPassword: userPassword || undefined,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Site oluşturulamadı.");
+      }
+      const websiteId = payload.website.id as string;
+      const external = buildExternalSnippet(websiteId);
+      const inline = buildInlineSnippet(websiteId);
+      setSnippet(external);
+      setInlineSnippet(inline);
+      if (payload.user?.email) {
+        setCreatedUser({ email: payload.user.email, password: userPassword });
+      }
+      setSiteName("");
+      setSiteUrl("");
+      setUserEmail("");
+      setUserPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Site oluşturulamadı.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCopy = async (value: string, mode: "external" | "inline") => {
@@ -203,10 +266,40 @@ const SettingsPage = () => {
               />
             </label>
 
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-2 text-xs font-semibold text-slate-500">
+                Yetkili Kullanıcı Adı
+                <input
+                  value={userEmail}
+                  onChange={(event) => setUserEmail(event.target.value)}
+                  placeholder="ornek@site.com"
+                  className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-3 text-sm text-slate-800 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-xs font-semibold text-slate-500">
+                Yetkili Şifre
+                <input
+                  value={userPassword}
+                  onChange={(event) => setUserPassword(event.target.value)}
+                  placeholder="********"
+                  type="password"
+                  className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-3 text-sm text-slate-800 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                />
+              </label>
+            </div>
+
             {normalizedDomain && (
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
                 Domain algılandı:{" "}
                 <span className="font-semibold">{normalizedDomain}</span>
+              </div>
+            )}
+
+            {createdUser && (
+              <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs text-sky-700">
+                Yetkili oluşturuldu:{" "}
+                <span className="font-semibold">{createdUser.email}</span> /{" "}
+                <span className="font-semibold">{createdUser.password}</span>
               </div>
             )}
 
@@ -218,9 +311,10 @@ const SettingsPage = () => {
 
             <button
               type="submit"
-              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-3 text-xs font-semibold uppercase tracking-widest text-white shadow-md shadow-purple-500/30 transition hover:brightness-95"
+              disabled={loading}
+              className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-3 text-xs font-semibold uppercase tracking-widest text-white shadow-md shadow-purple-500/30 transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Snippet Üret
+              {loading ? "Kaydediliyor..." : "Snippet Üret"}
             </button>
           </div>
 

@@ -6,11 +6,6 @@ import { FormEvent, useState } from "react";
 
 type Props = { onSuccess?: () => void };
 
-const VALID_CREDENTIALS = {
-  username: "admin",
-  password: "123456",
-};
-
 const LoginCard = ({ onSuccess }: Props) => {
   const router = useRouter();
   const [form, setForm] = useState({ username: "", password: "" });
@@ -27,19 +22,28 @@ const LoginCard = ({ onSuccess }: Props) => {
 
     setLoading(true);
     setError("");
-    setTimeout(() => {
-      if (
-        form.username === VALID_CREDENTIALS.username &&
-        form.password === VALID_CREDENTIALS.password
-      ) {
-        window.localStorage.setItem("auth", "1");
-        onSuccess?.();
-        router.push("/panel");
-      } else {
-        setError("Kullanıcı adı veya şifre hatalı.");
+    try {
+      const response = await fetch("/api/panel/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: form.username,
+          password: form.password,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Kullanıcı adı veya şifre hatalı.");
       }
+      window.localStorage.setItem("auth", "1");
+      window.localStorage.setItem("user", JSON.stringify(payload.user));
+      onSuccess?.();
+      router.push("/panel");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kullanıcı adı veya şifre hatalı.");
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   };
 
   const hasError = (field: "username" | "password") =>
