@@ -11,7 +11,7 @@ const menuItems = [
   { label: "Ayarlar", href: "/panel", active: false },
 ];
 
-type LayoutProps = PropsWithChildren<Record<string, never>>;
+type LayoutProps = PropsWithChildren;
 
 const DashboardLayout = ({ children }: LayoutProps) => {
   return (
