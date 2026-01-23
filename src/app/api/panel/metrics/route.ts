@@ -76,6 +76,14 @@ export async function GET(request: Request) {
     0
   );
 
+  const uniqueVisitors = new Set(
+    filteredSessions.map((session) => session.visitorId)
+  );
+  const avgDuration =
+    uniqueVisitors.size > 0
+      ? Math.round(totalDuration / uniqueVisitors.size)
+      : 0;
+
   const sessionIds = filteredSessions.map((session) => session.sessionId);
 
   const eventWhere: {
@@ -128,6 +136,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     totalPageviews,
     totalDuration,
+    avgDuration,
     dailyUniqueVisitors: dailyEvents.length,
     liveVisitors: liveSessions.length,
   });

@@ -40,6 +40,7 @@ const PanelPage = () => {
   const [metrics, setMetrics] = useState<{
     totalPageviews: number;
     totalDuration: number;
+    avgDuration: number;
     dailyUniqueVisitors: number;
     liveVisitors: number;
   } | null>(null);
@@ -183,8 +184,8 @@ const PanelPage = () => {
           />
           <StatsCard
             title="Okunma Süresi"
-            value={formatDuration(metrics?.totalDuration ?? 0)}
-            detail="Toplam süre"
+            value={formatDuration(metrics?.avgDuration ?? 0)}
+            detail="Kişi başı ortalama"
             accent="text-rose-600"
             tone="bg-rose-50"
           />
