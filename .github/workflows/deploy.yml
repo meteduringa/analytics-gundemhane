@@ -22,6 +22,4 @@ jobs:
             set -e
             cd /var/www/analytics-gundemhane
             git pull origin main
-            docker compose down --remove-orphans
-            docker rm -f analytics-gundemhane-app-1 || true
-            docker compose up -d --build
+            docker compose up -d --build --force-recreate app caddy
