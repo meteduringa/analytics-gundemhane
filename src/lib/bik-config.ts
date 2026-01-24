@@ -6,12 +6,17 @@ export const DEFAULT_BIK_CONFIG = {
   botPv5Min: 200,
   botPeriodicStddevMs: 200,
   botNoInteractionMs: 2000,
+  engagementMinVisibleMs: 1000,
+  engagementFullMs: 5000,
+  suspiciousSoftMode: true,
   avgTimeMode: "SESSION",
   cookieLessAggressiveness: 1.0,
   category: "GENEL",
 };
 
-export const getBikConfig = async (websiteId: string) => {
+export type BikConfig = typeof DEFAULT_BIK_CONFIG;
+
+export const getBikConfig = async (websiteId: string): Promise<BikConfig> => {
   const config = await prisma.bIKConfig.findUnique({
     where: { websiteId },
   });
@@ -24,9 +29,11 @@ export const getBikConfig = async (websiteId: string) => {
     botPv5Min: config.botPv5Min,
     botPeriodicStddevMs: config.botPeriodicStddevMs,
     botNoInteractionMs: config.botNoInteractionMs,
+    engagementMinVisibleMs: config.engagementMinVisibleMs,
+    engagementFullMs: config.engagementFullMs,
+    suspiciousSoftMode: config.suspiciousSoftMode,
     avgTimeMode: config.avgTimeMode,
     cookieLessAggressiveness: config.cookieLessAggressiveness,
     category: config.category,
   };
 };
-
