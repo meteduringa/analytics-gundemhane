@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getBikConfig } from "@/lib/bik-config";
 
 export const runtime = "nodejs";
 
@@ -28,72 +30,83 @@ export async function GET(request: Request) {
     },
   });
 
-  const [buckets, active30Rows, active5Rows] =
-    standardCount > 0
-      ? await Promise.all([
-          prisma.$queryRaw`
-            SELECT date_trunc('minute', "createdAt") AS minute,
-                   COUNT(DISTINCT "visitorId") AS visitors
-            FROM "analytics_events"
-            WHERE "websiteId" = ${websiteId}
-              AND "type" = 'PAGEVIEW'
-              AND "createdAt" >= ${thirtyMinAgo}
-              AND "createdAt" <= ${now}
-            GROUP BY minute
-            ORDER BY minute ASC
-          ` as Promise<BucketRow[]>,
-          prisma.$queryRaw`
-            SELECT COUNT(DISTINCT "visitorId") AS count
-            FROM "analytics_events"
-            WHERE "websiteId" = ${websiteId}
-              AND "type" = 'PAGEVIEW'
-              AND "createdAt" >= ${thirtyMinAgo}
-              AND "createdAt" <= ${now}
-          ` as Promise<{ count: bigint }[]>,
-          prisma.$queryRaw`
-            SELECT COUNT(DISTINCT "visitorId") AS count
-            FROM "analytics_events"
-            WHERE "websiteId" = ${websiteId}
-              AND "type" = 'PAGEVIEW'
-              AND "createdAt" >= ${fiveMinAgo}
-              AND "createdAt" <= ${now}
-          ` as Promise<{ count: bigint }[]>,
-        ])
-      : await Promise.all([
-          prisma.$queryRaw`
-            SELECT date_trunc('minute', "ts") AS minute,
-                   COUNT(DISTINCT "visitorId") AS visitors
-            FROM "bik_events"
-            WHERE "websiteId" = ${websiteId}
-              AND "type" = 'PAGE_VIEW'
-              AND "ts" >= ${thirtyMinAgo}
-              AND "ts" <= ${now}
-              AND "isValid" = true
-              AND "isSuspicious" = false
-            GROUP BY minute
-            ORDER BY minute ASC
-          ` as Promise<BucketRow[]>,
-          prisma.$queryRaw`
-            SELECT COUNT(DISTINCT "visitorId") AS count
-            FROM "bik_events"
-            WHERE "websiteId" = ${websiteId}
-              AND "type" = 'PAGE_VIEW'
-              AND "ts" >= ${thirtyMinAgo}
-              AND "ts" <= ${now}
-              AND "isValid" = true
-              AND "isSuspicious" = false
-          ` as Promise<{ count: bigint }[]>,
-          prisma.$queryRaw`
-            SELECT COUNT(DISTINCT "visitorId") AS count
-            FROM "bik_events"
-            WHERE "websiteId" = ${websiteId}
-              AND "type" = 'PAGE_VIEW'
-              AND "ts" >= ${fiveMinAgo}
-              AND "ts" <= ${now}
-              AND "isValid" = true
-              AND "isSuspicious" = false
-          ` as Promise<{ count: bigint }[]>,
-        ]);
+  let buckets: BucketRow[] = [];
+  let active30Rows: { count: bigint }[] = [];
+  let active5Rows: { count: bigint }[] = [];
+
+  if (standardCount > 0) {
+    [buckets, active30Rows, active5Rows] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT date_trunc('minute', "createdAt") AS minute,
+               COUNT(DISTINCT "visitorId") AS visitors
+        FROM "analytics_events"
+        WHERE "websiteId" = ${websiteId}
+          AND "type" = 'PAGEVIEW'
+          AND "createdAt" >= ${thirtyMinAgo}
+          AND "createdAt" <= ${now}
+        GROUP BY minute
+        ORDER BY minute ASC
+      ` as Promise<BucketRow[]>,
+      prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "visitorId") AS count
+        FROM "analytics_events"
+        WHERE "websiteId" = ${websiteId}
+          AND "type" = 'PAGEVIEW'
+          AND "createdAt" >= ${thirtyMinAgo}
+          AND "createdAt" <= ${now}
+      ` as Promise<{ count: bigint }[]>,
+      prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "visitorId") AS count
+        FROM "analytics_events"
+        WHERE "websiteId" = ${websiteId}
+          AND "type" = 'PAGEVIEW'
+          AND "createdAt" >= ${fiveMinAgo}
+          AND "createdAt" <= ${now}
+      ` as Promise<{ count: bigint }[]>,
+    ]);
+  } else {
+    const config = await getBikConfig(websiteId);
+    const includeSuspiciousInCounted = config.suspiciousSoftMode !== false;
+    const suspiciousClause = includeSuspiciousInCounted
+      ? Prisma.empty
+      : Prisma.sql`AND "isSuspicious" = false`;
+
+    [buckets, active30Rows, active5Rows] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT date_trunc('minute', "ts") AS minute,
+               COUNT(DISTINCT "visitorId") AS visitors
+        FROM "bik_events"
+        WHERE "websiteId" = ${websiteId}
+          AND "type" = 'PAGE_VIEW'
+          AND "ts" >= ${thirtyMinAgo}
+          AND "ts" <= ${now}
+          AND "isValid" = true
+          ${suspiciousClause}
+        GROUP BY minute
+        ORDER BY minute ASC
+      ` as Promise<BucketRow[]>,
+      prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "visitorId") AS count
+        FROM "bik_events"
+        WHERE "websiteId" = ${websiteId}
+          AND "type" = 'PAGE_VIEW'
+          AND "ts" >= ${thirtyMinAgo}
+          AND "ts" <= ${now}
+          AND "isValid" = true
+          ${suspiciousClause}
+      ` as Promise<{ count: bigint }[]>,
+      prisma.$queryRaw`
+        SELECT COUNT(DISTINCT "visitorId") AS count
+        FROM "bik_events"
+        WHERE "websiteId" = ${websiteId}
+          AND "type" = 'PAGE_VIEW'
+          AND "ts" >= ${fiveMinAgo}
+          AND "ts" <= ${now}
+          AND "isValid" = true
+          ${suspiciousClause}
+      ` as Promise<{ count: bigint }[]>,
+    ]);
+  }
 
   const active30Count = Number(
     (active30Rows as { count: bigint }[])[0]?.count ?? 0

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getBikConfig } from "@/lib/bik-config";
 
 const parseFilterDate = (value: string | null, endOfDay = false) => {
   if (!value) return null;
@@ -91,6 +92,9 @@ export async function GET(request: Request) {
   });
 
   if (standardCount === 0) {
+    const config = await getBikConfig(websiteId);
+    const includeSuspiciousInCounted = config.suspiciousSoftMode !== false;
+
     const bikPages = await prisma.bIKEvent.groupBy({
       by: ["url"],
       where: {
@@ -101,7 +105,7 @@ export async function GET(request: Request) {
           lte: endDate ?? undefined,
         },
         isValid: true,
-        isSuspicious: false,
+        ...(includeSuspiciousInCounted ? {} : { isSuspicious: false }),
       },
       _count: { url: true },
       orderBy: { _count: { url: "desc" } },

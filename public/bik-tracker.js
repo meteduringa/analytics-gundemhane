@@ -14,6 +14,9 @@
   const sessionIndexKey = "bik_session_index";
   const lastSeenKey = "bik_last_seen";
   const sessionTimeoutMs = 30 * 60 * 1000;
+  const MIN_VISIBLE_ENGAGEMENT_MS = 1000;
+  const FULL_ENGAGEMENT_MS = 5000;
+  const INTERACTION_WINDOW_MS = 10 * 1000;
   let memoryVisitorId = "";
   let memorySessionIndex = 0;
   let memoryLastSeen = 0;
@@ -159,10 +162,10 @@
     });
   };
 
-  const trackHeartbeat = () => {
+  const trackHeartbeat = (engagementIncrementMs) => {
     sendPayload({
       type: "heartbeat",
-      engagement_increment_ms: 5000,
+      engagement_increment_ms: engagementIncrementMs,
       url: `${location.pathname}${location.search}`,
       referrer: document.referrer || null,
     });
@@ -212,8 +215,12 @@
   let lastInteractionAt = 0;
   const heartbeatInterval = setInterval(() => {
     if (document.visibilityState !== "visible") return;
-    if (Date.now() - lastInteractionAt > 5000) return;
-    trackHeartbeat();
+    const now = Date.now();
+    const engagementIncrement =
+      now - lastInteractionAt <= INTERACTION_WINDOW_MS
+        ? FULL_ENGAGEMENT_MS
+        : MIN_VISIBLE_ENGAGEMENT_MS;
+    trackHeartbeat(engagementIncrement);
   }, 5000);
 
   window.addEventListener("pagehide", () => {

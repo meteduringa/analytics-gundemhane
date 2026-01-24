@@ -220,6 +220,7 @@ export async function POST(request: Request) {
   const createdAt = new Date();
   const nowMs = createdAt.getTime();
   const config = await getBikConfig(websiteId);
+  const includeSuspiciousInCounted = config.suspiciousSoftMode !== false;
 
   const visitorIdFromPayload = asString(payload.visitor_id);
   const ipBucket = maskIpBucket(ip);
@@ -360,7 +361,9 @@ export async function POST(request: Request) {
 
   let engagementIncrement = 0;
   if (eventType === "HEARTBEAT") {
-    const incrementMs = Number(payload.engagement_increment_ms ?? 5000);
+    const incrementMs = Number(
+      payload.engagement_increment_ms ?? config.engagementFullMs ?? 5000
+    );
     engagementIncrement = Number.isFinite(incrementMs) ? incrementMs : 0;
     sessionMeta.engagementMs += engagementIncrement;
     await prisma.bIKSession.updateMany({
@@ -467,13 +470,16 @@ export async function POST(request: Request) {
           pageviewKey,
           botScore: botEvaluation.botScore,
           isSuspicious: botEvaluation.isSuspicious,
-          isValid: isValidSession && !botEvaluation.isSuspicious,
+          isValid: isValidSession,
           metadata: { ipBucket, reasons: botEvaluation.reasons },
           ts: createdAt,
         },
       });
 
-      if (isValidSession && !botEvaluation.isSuspicious) {
+      if (
+        isValidSession &&
+        (includeSuspiciousInCounted || !botEvaluation.isSuspicious)
+      ) {
         await redis.zAdd(`bik:pageviews_valid:${websiteId}`, {
           score: nowMs,
           value: pageviewKey,
@@ -490,18 +496,22 @@ export async function POST(request: Request) {
           minuteTs,
           pageviews: 1,
         });
-      } else if (botEvaluation.isSuspicious) {
+      }
+
+      if (botEvaluation.isSuspicious) {
         await incrementRollupMinute({
           websiteId,
           minuteTs,
           suspicious: 1,
         });
       } else {
-        await incrementRollupMinute({
-          websiteId,
-          minuteTs,
-          invalid: 1,
-        });
+        if (!isValidSession) {
+          await incrementRollupMinute({
+            websiteId,
+            minuteTs,
+            invalid: 1,
+          });
+        }
       }
     }
   }
@@ -516,7 +526,10 @@ export async function POST(request: Request) {
     nowMs - ONLINE_WINDOW_MS
   );
 
-  if (isValidSession && !sessionMeta.isSuspicious) {
+  if (
+    isValidSession &&
+    (includeSuspiciousInCounted || !sessionMeta.isSuspicious)
+  ) {
     await redis.zAdd(`bik:online_valid:${websiteId}`, {
       score: nowMs,
       value: sessionId,
@@ -577,9 +590,9 @@ export async function POST(request: Request) {
         errorCode: errorCode ?? undefined,
         engagementIncrementMs:
           eventType === "HEARTBEAT"
-            ? Number(payload.engagement_increment_ms ?? 5000)
+            ? Number(payload.engagement_increment_ms ?? config.engagementFullMs ?? 5000)
             : undefined,
-        isValid: isValidSession && !sessionMeta.isSuspicious,
+        isValid: isValidSession,
         isSuspicious: sessionMeta.isSuspicious,
         metadata: { ipBucket },
         ts: createdAt,
@@ -607,7 +620,9 @@ export async function POST(request: Request) {
       websiteId,
       day: dayStart,
       visitorId,
-      hasValidSession: isValidSession && !sessionMeta.isSuspicious,
+      hasValidSession:
+        isValidSession &&
+        (includeSuspiciousInCounted || !sessionMeta.isSuspicious),
       hasDirectSession: directFlag,
       engagementMs: sessionMeta.engagementMs,
       isSuspicious: sessionMeta.isSuspicious,
@@ -615,7 +630,9 @@ export async function POST(request: Request) {
     },
     update: {
       hasValidSession:
-        isValidSession && !sessionMeta.isSuspicious ? true : undefined,
+        isValidSession && (includeSuspiciousInCounted || !sessionMeta.isSuspicious)
+          ? true
+          : undefined,
       hasDirectSession: directFlag ? true : undefined,
       engagementMs: { increment: engagementIncrement },
       isSuspicious: sessionMeta.isSuspicious ? true : undefined,

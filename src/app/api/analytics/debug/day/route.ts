@@ -71,6 +71,7 @@ export async function GET(request: Request) {
 
   const { start, end, dayString } = getIstanbulDayRange(dayDate);
   const config = await getBikConfig(siteId);
+  const includeSuspiciousInCounted = config.suspiciousSoftMode !== false;
 
   const sessions = await prisma.bIKSession.findMany({
     where: {
@@ -99,7 +100,9 @@ export async function GET(request: Request) {
   const suspiciousSessions = sessions.filter((session) => session.isSuspicious);
 
   const countedSessions = sessions.filter(
-    (session) => (session.engagementMs ?? 0) >= 1000 && !session.isSuspicious
+    (session) =>
+      (session.engagementMs ?? 0) >= 1000 &&
+      (includeSuspiciousInCounted || !session.isSuspicious)
   );
   const countedVisitors = new Set(
     countedSessions.map((session) => session.visitorId)
@@ -126,6 +129,23 @@ export async function GET(request: Request) {
       ? trCount + Math.round(nonTrCount * 0.1)
       : countedVisitors.size;
 
+  const countedPageviewWhere: {
+    websiteId: string;
+    type: "PAGE_VIEW";
+    isValid: boolean;
+    ts: { gte: Date; lte: Date };
+    isSuspicious?: boolean;
+  } = {
+    websiteId: siteId,
+    type: "PAGE_VIEW",
+    isValid: true,
+    ts: { gte: start, lte: end },
+  };
+
+  if (!includeSuspiciousInCounted) {
+    countedPageviewWhere.isSuspicious = false;
+  }
+
   const [rawPageviews, countedPageviews, routeChangePageviews] =
     await Promise.all([
       prisma.bIKEvent.count({
@@ -136,12 +156,7 @@ export async function GET(request: Request) {
         },
       }),
       prisma.bIKEvent.count({
-        where: {
-          websiteId: siteId,
-          type: "PAGE_VIEW",
-          isValid: true,
-          ts: { gte: start, lte: end },
-        },
+        where: countedPageviewWhere,
       }),
       prisma.bIKEvent.count({
         where: {
