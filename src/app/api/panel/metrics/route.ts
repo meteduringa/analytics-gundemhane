@@ -63,28 +63,42 @@ export async function GET(request: Request) {
     visitorId: session.visitorId,
     durationSec: Math.max(
       0,
-      Math.round((session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000)
+      Math.round(
+        (session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000
+      )
     ),
   }));
 
+  const visitorTotals = new Map<string, number>();
+  for (const session of sessionDurations) {
+    visitorTotals.set(
+      session.visitorId,
+      (visitorTotals.get(session.visitorId) ?? 0) + session.durationSec
+    );
+  }
+
+  const allowedVisitorIds = hideShortReads
+    ? new Set(
+        [...visitorTotals.entries()]
+          .filter(([, total]) => total >= 1)
+          .map(([visitorId]) => visitorId)
+      )
+    : new Set(visitorTotals.keys());
+
   const filteredSessions = hideShortReads
-    ? sessionDurations.filter((session) => session.durationSec >= 1)
+    ? sessionDurations.filter((session) => allowedVisitorIds.has(session.visitorId))
     : sessionDurations;
 
-  const totalDuration = filteredSessions.reduce(
-    (sum, session) => sum + session.durationSec,
-    0
-  );
+  const totalDuration = hideShortReads
+    ? [...allowedVisitorIds].reduce(
+        (sum, visitorId) => sum + (visitorTotals.get(visitorId) ?? 0),
+        0
+      )
+    : [...visitorTotals.values()].reduce((sum, value) => sum + value, 0);
 
-  const uniqueVisitors = new Set(
-    filteredSessions.map((session) => session.visitorId)
-  );
+  const uniqueVisitors = allowedVisitorIds.size;
   const avgDuration =
-    uniqueVisitors.size > 0
-      ? Math.round(totalDuration / uniqueVisitors.size)
-      : 0;
-
-  const sessionIds = filteredSessions.map((session) => session.sessionId);
+    uniqueVisitors > 0 ? Math.round(totalDuration / uniqueVisitors) : 0;
 
   const eventWhere: {
     websiteId: string;
@@ -101,7 +115,9 @@ export async function GET(request: Request) {
   }
 
   if (hideShortReads) {
-    eventWhere.sessionId = { in: sessionIds.length ? sessionIds : ["__none__"] };
+    eventWhere.visitorId = {
+      in: allowedVisitorIds.size ? [...allowedVisitorIds] : ["__none__"],
+    };
   }
 
   const totalPageviews = await prisma.analyticsEvent.count({
@@ -124,13 +140,25 @@ export async function GET(request: Request) {
     },
   });
 
-  const dailyFiltered = hideShortReads
-    ? dailySessions.filter((session) => {
-        const duration =
-          (session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000;
-        return duration >= 1;
-      })
-    : dailySessions;
+  const dailyVisitorTotals = new Map<string, number>();
+  for (const session of dailySessions) {
+    const duration = Math.max(
+      0,
+      Math.round((session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000)
+    );
+    dailyVisitorTotals.set(
+      session.visitorId,
+      (dailyVisitorTotals.get(session.visitorId) ?? 0) + duration
+    );
+  }
+
+  const dailyAllowedVisitorIds = hideShortReads
+    ? new Set(
+        [...dailyVisitorTotals.entries()]
+          .filter(([, total]) => total >= 1)
+          .map(([visitorId]) => visitorId)
+      )
+    : new Set(dailyVisitorTotals.keys());
 
   const now = new Date();
   const liveThreshold = new Date(now.getTime() - 5 * 60 * 1000);
@@ -142,19 +170,31 @@ export async function GET(request: Request) {
     select: { visitorId: true, startedAt: true, lastSeenAt: true },
   });
 
-  const liveFiltered = hideShortReads
-    ? liveSessions.filter((session) => {
-        const duration =
-          (session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000;
-        return duration >= 1;
-      })
-    : liveSessions;
+  const liveVisitorTotals = new Map<string, number>();
+  for (const session of liveSessions) {
+    const duration = Math.max(
+      0,
+      Math.round((session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000)
+    );
+    liveVisitorTotals.set(
+      session.visitorId,
+      (liveVisitorTotals.get(session.visitorId) ?? 0) + duration
+    );
+  }
+
+  const liveAllowedVisitorIds = hideShortReads
+    ? new Set(
+        [...liveVisitorTotals.entries()]
+          .filter(([, total]) => total >= 1)
+          .map(([visitorId]) => visitorId)
+      )
+    : new Set(liveVisitorTotals.keys());
 
   return NextResponse.json({
     totalPageviews,
     totalDuration,
     avgDuration,
-    dailyUniqueVisitors: new Set(dailyFiltered.map((s) => s.visitorId)).size,
-    liveVisitors: new Set(liveFiltered.map((s) => s.visitorId)).size,
+    dailyUniqueVisitors: dailyAllowedVisitorIds.size,
+    liveVisitors: liveAllowedVisitorIds.size,
   });
 }
