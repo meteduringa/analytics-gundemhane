@@ -5,17 +5,28 @@ import { getIstanbulDayRange } from "@/lib/bik-time";
 export const getBikDayMetrics = async (siteId: string, dayDate: Date) => {
   const { start, end, dayString } = getIstanbulDayRange(dayDate);
   const config = await getBikConfig(siteId);
+  const includeSuspiciousInCounted = config.suspiciousSoftMode !== false;
+
+  const sessionWhere: {
+    websiteId: string;
+    startedAt: { gte: Date; lte: Date };
+    engagementMs: { gte: number };
+    isSuspicious?: boolean;
+  } = {
+    websiteId: siteId,
+    startedAt: {
+      gte: start,
+      lte: end,
+    },
+    engagementMs: { gte: 1000 },
+  };
+
+  if (!includeSuspiciousInCounted) {
+    sessionWhere.isSuspicious = false;
+  }
 
   const validSessions = await prisma.bIKSession.findMany({
-    where: {
-      websiteId: siteId,
-      startedAt: {
-        gte: start,
-        lte: end,
-      },
-      isSuspicious: false,
-      engagementMs: { gte: 1000 },
-    },
+    where: sessionWhere,
     select: {
       sessionId: true,
       visitorId: true,
@@ -85,4 +96,3 @@ export const getBikDayMetrics = async (siteId: string, dayDate: Date) => {
     category: config.category,
   };
 };
-

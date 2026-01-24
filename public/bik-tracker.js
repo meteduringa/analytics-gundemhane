@@ -96,6 +96,17 @@
     }
   };
 
+  const beaconStats = { success: 0, fail: 0 };
+  const logBeacon = (ok) => {
+    if (ok) {
+      beaconStats.success += 1;
+      console.debug?.("[bik] beacon success", beaconStats.success);
+      return;
+    }
+    beaconStats.fail += 1;
+    console.debug?.("[bik] beacon failed", beaconStats.fail);
+  };
+
   const sendRaw = (payload, allowErrorFallback = true) => {
     payload.website_id = siteId;
     const visitorInfo = getVisitorInfo();
@@ -111,6 +122,9 @@
 
     const body = JSON.stringify(payload);
     const sent = navigator.sendBeacon?.(endpoint, body);
+    if (typeof sent === "boolean") {
+      logBeacon(sent);
+    }
     if (sent) return;
     fetch(endpoint, {
       method: "POST",

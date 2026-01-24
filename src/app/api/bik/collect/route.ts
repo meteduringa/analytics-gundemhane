@@ -360,12 +360,14 @@ export async function POST(request: Request) {
   }
 
   let engagementIncrement = 0;
+  let isValidSession = isValidEngagement(sessionMeta.engagementMs);
   if (eventType === "HEARTBEAT") {
     const incrementMs = Number(
       payload.engagement_increment_ms ?? config.engagementFullMs ?? 5000
     );
     engagementIncrement = Number.isFinite(incrementMs) ? incrementMs : 0;
     sessionMeta.engagementMs += engagementIncrement;
+    isValidSession = isValidEngagement(sessionMeta.engagementMs);
     await prisma.bIKSession.updateMany({
       where: { websiteId, sessionId },
       data: {
@@ -373,8 +375,6 @@ export async function POST(request: Request) {
       },
     });
   }
-
-  const isValidSession = isValidEngagement(sessionMeta.engagementMs);
   const minuteTs = new Date(Math.floor(nowMs / 60_000) * 60_000);
 
   let deduped = false;
@@ -395,6 +395,15 @@ export async function POST(request: Request) {
     }
 
     if (!deduped) {
+      const pageviewEngagementIncrement =
+        Number(config.engagementMinVisibleMs ?? 1000) || 1000;
+      sessionMeta.engagementMs += pageviewEngagementIncrement;
+      engagementIncrement += pageviewEngagementIncrement;
+      isValidSession = isValidEngagement(sessionMeta.engagementMs);
+      await prisma.bIKSession.updateMany({
+        where: { websiteId, sessionId },
+        data: { engagementMs: { increment: pageviewEngagementIncrement } },
+      });
       await incrementRollupMinute({
         websiteId,
         minuteTs,
@@ -468,6 +477,7 @@ export async function POST(request: Request) {
           isRouteChange,
           visitorIdSource: visitorIdSource ?? undefined,
           pageviewKey,
+          engagementIncrementMs: pageviewEngagementIncrement,
           botScore: botEvaluation.botScore,
           isSuspicious: botEvaluation.isSuspicious,
           isValid: isValidSession,
@@ -495,6 +505,7 @@ export async function POST(request: Request) {
           websiteId,
           minuteTs,
           pageviews: 1,
+          engagementMs: pageviewEngagementIncrement,
         });
       }
 
