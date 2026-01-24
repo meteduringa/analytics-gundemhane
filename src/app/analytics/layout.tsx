@@ -14,6 +14,7 @@
       { label: "Dashboard", href: "/analytics/admin" },
       { label: "Siteler", href: "/analytics/admin#sites" },
       { label: "Kullanıcılar", href: "/analytics/admin#users" },
+      { label: "BIK Diagnostics", href: "/analytics/admin/diagnostics" },
     ];
 
     const customerNav = [
@@ -97,4 +98,3 @@
       </div>
     );
   }
-

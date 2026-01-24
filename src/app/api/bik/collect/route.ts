@@ -82,6 +82,11 @@ const incrementRollupMinute = async (payload: {
   websiteId: string;
   minuteTs: Date;
   pageviews?: number;
+  pageviewsRaw?: number;
+  routeChangePageviews?: number;
+  renderPings?: number;
+  dedupedPageviews?: number;
+  clientErrorCount?: number;
   engagementMs?: number;
   invalid?: number;
   suspicious?: number;
@@ -97,12 +102,32 @@ const incrementRollupMinute = async (payload: {
       websiteId: payload.websiteId,
       minuteTs: payload.minuteTs,
       pageviews: payload.pageviews ?? 0,
+      pageviewsRaw: payload.pageviewsRaw ?? 0,
+      routeChangePageviews: payload.routeChangePageviews ?? 0,
+      renderPings: payload.renderPings ?? 0,
+      dedupedPageviews: payload.dedupedPageviews ?? 0,
+      clientErrorCount: payload.clientErrorCount ?? 0,
       engagementMsSum: payload.engagementMs ?? 0,
       invalidCount: payload.invalid ?? 0,
       suspiciousCount: payload.suspicious ?? 0,
     },
     update: {
       pageviews: payload.pageviews ? { increment: payload.pageviews } : undefined,
+      pageviewsRaw: payload.pageviewsRaw
+        ? { increment: payload.pageviewsRaw }
+        : undefined,
+      routeChangePageviews: payload.routeChangePageviews
+        ? { increment: payload.routeChangePageviews }
+        : undefined,
+      renderPings: payload.renderPings
+        ? { increment: payload.renderPings }
+        : undefined,
+      dedupedPageviews: payload.dedupedPageviews
+        ? { increment: payload.dedupedPageviews }
+        : undefined,
+      clientErrorCount: payload.clientErrorCount
+        ? { increment: payload.clientErrorCount }
+        : undefined,
       engagementMsSum: payload.engagementMs
         ? { increment: payload.engagementMs }
         : undefined,
@@ -152,6 +177,12 @@ export async function POST(request: Request) {
   const type = String(payload.type ?? "");
   const url = String(payload.url ?? "");
   const referrer = asString(payload.referrer);
+  const visitorIdSource = asString(payload.visitor_id_source);
+  const errorCode = asString(payload.error_code);
+  const isRouteChange =
+    payload.is_route_change === true ||
+    payload.is_route_change === "true" ||
+    payload.is_route_change === "1";
 
   if (!websiteId || !type || !url) {
     return NextResponse.json(
@@ -295,13 +326,18 @@ export async function POST(request: Request) {
     data: { lastSeenAt: createdAt },
   });
 
-  const eventTypeMap: Record<string, "PAGE_VIEW" | "HEARTBEAT" | "INTERACTION" | "SESSION_START" | "SESSION_END"> =
+  const eventTypeMap: Record<
+    string,
+    "PAGE_VIEW" | "HEARTBEAT" | "INTERACTION" | "SESSION_START" | "SESSION_END" | "RENDER_PING" | "CLIENT_ERROR"
+  > =
     {
       page_view: "PAGE_VIEW",
       heartbeat: "HEARTBEAT",
       interaction: "INTERACTION",
       session_start: "SESSION_START",
       session_end: "SESSION_END",
+      render_ping: "RENDER_PING",
+      client_error: "CLIENT_ERROR",
     };
   const eventType = eventTypeMap[type];
   if (!eventType) {
@@ -348,9 +384,21 @@ export async function POST(request: Request) {
       await redis.incr(`bik:health:${websiteId}:dedupe`);
       await redis.expire(`bik:health:${websiteId}:dedupe`, 600);
       deduped = true;
+      await incrementRollupMinute({
+        websiteId,
+        minuteTs,
+        dedupedPageviews: 1,
+      });
     }
 
     if (!deduped) {
+      await incrementRollupMinute({
+        websiteId,
+        minuteTs,
+        pageviewsRaw: 1,
+        routeChangePageviews: isRouteChange ? 1 : 0,
+      });
+
       const pv10sKey = `bik:pv:10s:${websiteId}:${visitorId}`;
       const pv5mKey = `bik:pv:5m:${websiteId}:${visitorId}`;
       const pvIntervalsKey = `bik:pv:intervals:${websiteId}:${visitorId}`;
@@ -414,6 +462,8 @@ export async function POST(request: Request) {
           userAgentHash: hashString(
             asString(payload.userAgent) ?? request.headers.get("user-agent") ?? ""
           ),
+          isRouteChange,
+          visitorIdSource: visitorIdSource ?? undefined,
           pageviewKey,
           botScore: botEvaluation.botScore,
           isSuspicious: botEvaluation.isSuspicious,
@@ -492,6 +542,22 @@ export async function POST(request: Request) {
     }
   }
 
+  if (eventType === "RENDER_PING") {
+    await incrementRollupMinute({
+      websiteId,
+      minuteTs,
+      renderPings: 1,
+    });
+  }
+
+  if (eventType === "CLIENT_ERROR") {
+    await incrementRollupMinute({
+      websiteId,
+      minuteTs,
+      clientErrorCount: 1,
+    });
+  }
+
   if (eventType !== "PAGE_VIEW") {
     await prisma.bIKEvent.create({
       data: {
@@ -506,6 +572,9 @@ export async function POST(request: Request) {
         userAgentHash: hashString(
           asString(payload.userAgent) ?? request.headers.get("user-agent") ?? ""
         ),
+        isRouteChange: false,
+        visitorIdSource: visitorIdSource ?? undefined,
+        errorCode: errorCode ?? undefined,
         engagementIncrementMs:
           eventType === "HEARTBEAT"
             ? Number(payload.engagement_increment_ms ?? 5000)

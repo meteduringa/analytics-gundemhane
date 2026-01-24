@@ -29,6 +29,8 @@ enum BIKEventType {
   INTERACTION
   SESSION_START
   SESSION_END
+  RENDER_PING
+  CLIENT_ERROR
 }
 
   model User {
@@ -162,6 +164,9 @@ model BIKEvent {
   botScore               Int?          @default(0)
   isValid                Boolean       @default(true)
   isSuspicious           Boolean       @default(false)
+  isRouteChange          Boolean       @default(false)
+  visitorIdSource        String?
+  errorCode              String?
   pageviewKey            String?
   metadata               Json?
   ts                     DateTime      @default(now())
@@ -221,6 +226,11 @@ model BIKRollupMinute {
   validDirectUnique Int     @default(0)
   validSessions    Int      @default(0)
   pageviews        Int      @default(0)
+  pageviewsRaw     Int      @default(0)
+  routeChangePageviews Int  @default(0)
+  renderPings      Int      @default(0)
+  dedupedPageviews Int      @default(0)
+  clientErrorCount Int      @default(0)
   engagementMsSum  Int      @default(0)
   suspiciousCount  Int      @default(0)
   invalidCount     Int      @default(0)

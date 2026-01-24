@@ -14,6 +14,9 @@
   const sessionIndexKey = "bik_session_index";
   const lastSeenKey = "bik_last_seen";
   const sessionTimeoutMs = 30 * 60 * 1000;
+  let memoryVisitorId = "";
+  let memorySessionIndex = 0;
+  let memoryLastSeen = 0;
 
   const uuid = () =>
     "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
@@ -22,23 +25,55 @@
       return value.toString(16);
     });
 
-  const getVisitorId = () => {
-    try {
-      let id = storage.getItem(visitorKey);
-      if (!id) {
-        id = uuid();
-        storage.setItem(visitorKey, id);
-      }
-      return id;
-    } catch {
-      return "";
-    }
+  const readCookie = (name) => {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return match ? decodeURIComponent(match[1]) : "";
   };
 
-  const getSessionInfo = () => {
+  const writeCookie = (name, value) => {
+    const maxAge = 60 * 60 * 24 * 365;
+    const secure = location.protocol === "https:" ? "; secure" : "";
+    document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; samesite=lax${secure}`;
+  };
+
+  const getVisitorInfo = () => {
+    const cookieId = readCookie(visitorKey);
+    if (cookieId) {
+      return { id: cookieId, source: "cookie" };
+    }
+
+    try {
+      const stored = storage.getItem(visitorKey);
+      if (stored) {
+        writeCookie(visitorKey, stored);
+        return { id: stored, source: "localStorage" };
+      }
+    } catch {
+      // ignore storage failures
+    }
+
+    const newId = uuid();
+    let source = "ephemeral";
+    try {
+      storage.setItem(visitorKey, newId);
+      source = "localStorage";
+    } catch {
+      memoryVisitorId = newId;
+    }
+    try {
+      writeCookie(visitorKey, newId);
+      source = source === "ephemeral" ? "cookie" : source;
+    } catch {
+      // ignore cookie failures
+    }
+
+    return { id: newId, source };
+  };
+
+  const getSessionInfo = (visitorId) => {
+    const now = Date.now();
     try {
       const lastSeen = Number(storage.getItem(lastSeenKey) ?? 0);
-      const now = Date.now();
       let index = Number(storage.getItem(sessionIndexKey) ?? 0);
       let isNew = false;
       if (!index || now - lastSeen > sessionTimeoutMs) {
@@ -47,17 +82,23 @@
         storage.setItem(sessionIndexKey, String(index));
       }
       storage.setItem(lastSeenKey, String(now));
-      const visitorId = getVisitorId();
       return { sessionId: visitorId ? `${visitorId}.${index}` : "", isNew };
     } catch {
-      return { sessionId: "", isNew: false };
+      if (!memorySessionIndex || now - memoryLastSeen > sessionTimeoutMs) {
+        memorySessionIndex += 1;
+      }
+      memoryLastSeen = now;
+      const id = visitorId || memoryVisitorId;
+      return { sessionId: id ? `${id}.${memorySessionIndex}` : "", isNew: true };
     }
   };
 
-  const sendRaw = (payload) => {
+  const sendRaw = (payload, allowErrorFallback = true) => {
     payload.website_id = siteId;
-    payload.visitor_id = getVisitorId();
-    const sessionInfo = getSessionInfo();
+    const visitorInfo = getVisitorInfo();
+    payload.visitor_id = visitorInfo.id;
+    payload.visitor_id_source = visitorInfo.source;
+    const sessionInfo = getSessionInfo(visitorInfo.id);
     payload.session_id = sessionInfo.sessionId;
     payload.ts = Date.now();
     payload.screen = `${window.screen.width}x${window.screen.height}`;
@@ -65,23 +106,45 @@
     payload.userAgent = navigator.userAgent;
     payload.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    navigator.sendBeacon?.(endpoint, JSON.stringify(payload)) ||
-      fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        keepalive: true,
-        credentials: "omit",
-      }).catch(() => {});
+    const body = JSON.stringify(payload);
+    const sent = navigator.sendBeacon?.(endpoint, body);
+    if (sent) return;
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+      credentials: "omit",
+    }).catch(() => {
+      if (!allowErrorFallback || payload.type === "client_error") return;
+      sendRaw(
+        {
+          type: "client_error",
+          error_code: "fetch_failed",
+          url: `${location.pathname}${location.search}`,
+          referrer: document.referrer || null,
+        },
+        false
+      );
+    });
   };
 
   const sendPayload = (payload) => {
     sendRaw(payload);
   };
 
-  const trackPageview = () => {
+  const trackPageview = (isRouteChange) => {
     sendPayload({
       type: "page_view",
+      url: `${location.pathname}${location.search}`,
+      referrer: document.referrer || null,
+      is_route_change: Boolean(isRouteChange),
+    });
+  };
+
+  const trackRenderPing = () => {
+    sendPayload({
+      type: "render_ping",
       url: `${location.pathname}${location.search}`,
       referrer: document.referrer || null,
     });
@@ -118,7 +181,7 @@
     const currentUrl = `${location.pathname}${location.search}`;
     if (currentUrl === lastUrl) return;
     lastUrl = currentUrl;
-    trackPageview();
+    trackPageview(true);
   };
 
   const originalPushState = history.pushState;
@@ -159,12 +222,14 @@
   });
 
   if (document.readyState === "complete") {
-    trackPageview();
+    trackRenderPing();
+    trackPageview(false);
   } else {
     window.addEventListener(
       "load",
       () => {
-        trackPageview();
+        trackRenderPing();
+        trackPageview(false);
       },
       { once: true }
     );
