@@ -4,7 +4,8 @@ import { getServerSession } from "next-auth";
   import { prisma } from "@/lib/prisma";
   import AdminWebsites from "@/components/analytics/AdminWebsites";
   import AdminUsers from "@/components/analytics/AdminUsers";
-  import AdminAlarms from "@/components/analytics/AdminAlarms";
+import AdminAlarms from "@/components/analytics/AdminAlarms";
+import AdminBikCalibration from "@/components/analytics/AdminBikCalibration";
   import MetricCard from "@/components/analytics/ui/MetricCard";
   import { getLast24HoursRange } from "@/lib/analytics-time";
 
@@ -107,6 +108,10 @@ import { getServerSession } from "next-auth";
 
         <section id="alarms">
           <AdminAlarms initialAlarms={alarmsForClient} websites={websitesForClient} />
+        </section>
+
+        <section id="bik-calibration">
+          <AdminBikCalibration websites={websitesForClient} />
         </section>
       </main>
     );

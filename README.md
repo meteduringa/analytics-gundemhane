@@ -57,6 +57,39 @@ docker-compose up -d --build
 - Custom event: `trackEvent("name", { any: "json" })`
 - Click auto event: `tracker--click--event_name` class ekle.
 
+## BIK-like Analytics (MVP)
+
+Bu modül, BIK raporlarına yakın metrikleri aynı gün dakika bazında üretmek için tasarlandi.
+
+### BIK Tracker Snippet
+
+```html
+<script async src="https://analytics.gundemhane.com/bik-tracker.js"
+  data-site-id="UUID"
+  data-host-url="https://analytics.gundemhane.com">
+</script>
+```
+
+### BIK API Endpoints
+
+- `GET /analytics/realtime?site_id=...`
+- `GET /analytics/day?date=YYYY-MM-DD&site_id=...`
+- `GET /analytics/health?site_id=...`
+- `POST /api/bik/calibration`
+
+### BIK Kurallar (ozet)
+
+- Tekil ziyaretci gunluk hesaplanir; gun icinde birden fazla giris tekildir.
+- `engagement_time_ms < 1000` olan oturumlar gecersiz sayilir.
+- Bot/suspicious trafik esikleri `BIKConfig` ile ayarlanir.
+- Direct trafik: referrer yok + UTM/ref yoksa, veya arama motoru referrer + "/" landing.
+- Yurtdisi trafikte `category == GENEL` ise %10 sayim uygulanir.
+
+### Kalibrasyon
+
+Admin panelinde D-1 degerlerini girip kalibrasyon tetikleyebilirsin.
+`/api/bik/calibration` endpoint'i mevcut config'i gunceller ve run kaydeder.
+
 ## Alarms (v1)
 
 - `EVENT_THRESHOLD`: belirli zaman penceresinde event sayisi esigi.

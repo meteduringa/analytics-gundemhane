@@ -18,10 +18,18 @@
     EVENT
   }
 
-  enum AnalyticsAlarmType {
-    EVENT_THRESHOLD
-    ONLINE_BELOW
-  }
+enum AnalyticsAlarmType {
+  EVENT_THRESHOLD
+  ONLINE_BELOW
+}
+
+enum BIKEventType {
+  PAGE_VIEW
+  HEARTBEAT
+  INTERACTION
+  SESSION_START
+  SESSION_END
+}
 
   model User {
     id           String               @id @default(cuid())
@@ -98,7 +106,7 @@
     @@map("analytics_sessions")
   }
 
-  model AnalyticsAlarm {
+model AnalyticsAlarm {
     id              String             @id @default(uuid())
     websiteId       String
     name            String
@@ -112,5 +120,142 @@
     website         AnalyticsWebsite   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
 
     @@index([websiteId, isActive])
-    @@map("analytics_alarms")
-  }
+  @@map("analytics_alarms")
+}
+
+model BIKConfig {
+  id                         String   @id @default(uuid())
+  websiteId                  String   @unique
+  sessionInactivityMinutes   Int      @default(30)
+  botPvRate10s               Int      @default(30)
+  botPv5Min                  Int      @default(200)
+  botPeriodicStddevMs        Int      @default(200)
+  botNoInteractionMs         Int      @default(2000)
+  avgTimeMode                String   @default("SESSION")
+  cookieLessAggressiveness   Float    @default(1.0)
+  category                   String   @default("GENEL")
+  updatedAt                  DateTime @updatedAt
+  website                    AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@map("bik_configs")
+}
+
+model BIKEvent {
+  id                     String       @id @default(uuid())
+  websiteId              String
+  visitorId              String
+  sessionId              String
+  type                   BIKEventType
+  url                    String
+  referrer               String?
+  isDirectSession         Boolean      @default(false)
+  countryCode            String?
+  userAgentHash          String?
+  engagementIncrementMs  Int?
+  botScore               Int?          @default(0)
+  isValid                Boolean       @default(true)
+  isSuspicious           Boolean       @default(false)
+  pageviewKey            String?
+  metadata               Json?
+  ts                     DateTime      @default(now())
+  website                AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId, ts])
+  @@index([websiteId, sessionId])
+  @@index([websiteId, visitorId])
+  @@index([websiteId, type, ts])
+  @@map("bik_events")
+}
+
+model BIKSession {
+  id            String   @id @default(uuid())
+  websiteId     String
+  visitorId     String
+  sessionId     String
+  startedAt     DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  endedAt       DateTime?
+  engagementMs  Int      @default(0)
+  isValid       Boolean  @default(true)
+  isSuspicious  Boolean  @default(false)
+  isDirect      Boolean  @default(false)
+  countryCode   String?
+  website       AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, sessionId])
+  @@index([websiteId, visitorId])
+  @@index([websiteId, lastSeenAt])
+  @@map("bik_sessions")
+}
+
+model BIKDailyVisitor {
+  id               String   @id @default(uuid())
+  websiteId        String
+  day              DateTime
+  visitorId        String
+  hasValidSession  Boolean  @default(false)
+  hasDirectSession Boolean  @default(false)
+  engagementMs     Int      @default(0)
+  isSuspicious     Boolean  @default(false)
+  countryCode      String?
+  updatedAt        DateTime @updatedAt
+  website          AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, day, visitorId])
+  @@index([websiteId, day])
+  @@map("bik_daily_visitors")
+}
+
+model BIKRollupMinute {
+  id               String   @id @default(uuid())
+  websiteId        String
+  minuteTs         DateTime
+  validUnique      Int      @default(0)
+  validDirectUnique Int     @default(0)
+  validSessions    Int      @default(0)
+  pageviews        Int      @default(0)
+  engagementMsSum  Int      @default(0)
+  suspiciousCount  Int      @default(0)
+  invalidCount     Int      @default(0)
+  updatedAt        DateTime @updatedAt
+  website          AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, minuteTs])
+  @@index([websiteId, minuteTs])
+  @@map("bik_rollup_minute")
+}
+
+model BIKRollupDay {
+  id                          String   @id @default(uuid())
+  websiteId                   String
+  day                         DateTime
+  dailyUniqueVisitors         Int      @default(0)
+  dailyDirectUniqueVisitors   Int      @default(0)
+  dailySessions               Int      @default(0)
+  dailyPageviews              Int      @default(0)
+  dailyAvgTimeOnSiteSeconds   Int      @default(0)
+  directRatio                 Float    @default(0)
+  foreignAdjustmentApplied    Boolean  @default(false)
+  healthScore                 Int      @default(100)
+  category                    String?
+  updatedAt                   DateTime @updatedAt
+  website                     AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, day])
+  @@index([websiteId, day])
+  @@map("bik_rollup_day")
+}
+
+model BIKCalibrationRun {
+  id            String   @id @default(uuid())
+  websiteId     String
+  day           DateTime
+  bikMetrics    Json
+  localMetrics  Json
+  resultConfig  Json
+  createdAt     DateTime @default(now())
+  website       AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId, day])
+  @@map("bik_calibration_runs")
+}
