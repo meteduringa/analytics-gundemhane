@@ -42,19 +42,26 @@ enum BIKEventType {
     userWebsites AnalyticsUserWebsite[]
   }
 
-  model AnalyticsWebsite {
-    id             String                 @id @default(uuid())
-    name           String
-    allowedDomains String[]
-    createdAt      DateTime               @default(now())
-    updatedAt      DateTime               @updatedAt
-    userWebsites   AnalyticsUserWebsite[]
-    events         AnalyticsEvent[]
-    sessions       AnalyticsSession[]
-    alarms         AnalyticsAlarm[]
+model AnalyticsWebsite {
+  id             String                 @id @default(uuid())
+  name           String
+  allowedDomains String[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  userWebsites   AnalyticsUserWebsite[]
+  events         AnalyticsEvent[]
+  sessions       AnalyticsSession[]
+  alarms         AnalyticsAlarm[]
+  bikConfig      BIKConfig?
+  bikEvents      BIKEvent[]
+  bikSessions    BIKSession[]
+  bikDailyVisitors BIKDailyVisitor[]
+  bikRollupMinutes BIKRollupMinute[]
+  bikRollupDays  BIKRollupDay[]
+  bikCalibrationRuns BIKCalibrationRun[]
 
-    @@map("analytics_websites")
-  }
+  @@map("analytics_websites")
+}
 
   model AnalyticsUserWebsite {
     userId    String
