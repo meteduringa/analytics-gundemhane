@@ -7,14 +7,6 @@ import { formatDuration } from "@/lib/formatDuration";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-const parseFilterDate = (value: string | undefined, endOfDay = false) => {
-  if (!value) {
-    return null;
-  }
-  const iso = `${value}T${endOfDay ? "23:59:59" : "00:00:00"}+03:00`;
-  return new Date(iso).getTime();
-};
-
 const formatDateInput = (date: Date) => {
   return date.toISOString().split("T")[0];
 };
@@ -60,15 +52,6 @@ const PanelPage = () => {
     live_visitors: number;
     live_pageviews: number;
   } | null>(null);
-  const [topPages, setTopPages] = useState<{ url: string; pageviews: number }[]>(
-    []
-  );
-  const [activity, setActivity] = useState<{
-    active_30m: number;
-    active_5m: number;
-    series: { minute: string; visitors: number }[];
-  } | null>(null);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -111,7 +94,6 @@ const PanelPage = () => {
   useEffect(() => {
     const loadMetrics = async () => {
       if (!selectedSiteId) return;
-      setLoading(true);
       const params = new URLSearchParams({
         websiteId: selectedSiteId,
         start: startDate,
@@ -123,7 +105,6 @@ const PanelPage = () => {
       if (response.ok) {
         setMetrics(payload);
       }
-      setLoading(false);
     };
     loadMetrics();
   }, [endDate, hideShortReads, selectedSiteId, startDate]);
@@ -147,46 +128,6 @@ const PanelPage = () => {
     };
     loadBikMetrics();
   }, [selectedSiteId, startDate]);
-
-  useEffect(() => {
-    const loadTopPages = async () => {
-      if (!selectedSiteId) return;
-      const params = new URLSearchParams({
-        websiteId: selectedSiteId,
-        start: startDate,
-        end: endDate,
-        hideShortReads: hideShortReads ? "1" : "0",
-        limit: "12",
-      });
-      const response = await fetch(`/api/panel/top-pages?${params.toString()}`);
-      const payload = await response.json();
-      if (response.ok) {
-        setTopPages(payload.pages ?? []);
-      }
-    };
-    loadTopPages();
-  }, [endDate, hideShortReads, selectedSiteId, startDate]);
-
-  useEffect(() => {
-    let timer: number | undefined;
-    const loadActivity = async () => {
-      if (!selectedSiteId) return;
-      const response = await fetch(
-        `/api/panel/realtime-activity?websiteId=${selectedSiteId}`
-      );
-      const payload = await response.json();
-      if (response.ok) {
-        setActivity(payload);
-      }
-    };
-    loadActivity();
-    timer = window.setInterval(loadActivity, 15000);
-    return () => {
-      if (timer) {
-        window.clearInterval(timer);
-      }
-    };
-  }, [selectedSiteId]);
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
@@ -355,105 +296,6 @@ const PanelPage = () => {
           </div>
         </div>
 
-        <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                  İçerik Performansı
-                </p>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  Okunan Haberler
-                </h2>
-              </div>
-              <span className="text-xs text-slate-400">
-                {loading ? "Yükleniyor..." : "Güncel"}
-              </span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {topPages.length === 0 ? (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Henüz veri yok.
-                </div>
-              ) : (
-                topPages.map((page) => (
-                  <div
-                    key={page.url}
-                    className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700"
-                  >
-                    <span className="truncate">{page.url}</span>
-                    <span className="ml-4 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-                      {page.pageviews}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Anlık Analiz
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs text-slate-500">
-                    Son 30 dakika içinde etkin kullanıcı
-                  </p>
-                  <p className="text-3xl font-bold text-slate-900">
-                    {activity?.active_30m ?? 0}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">
-                    Son 5 dakika içindeki etkin kullanıcı
-                  </p>
-                  <p className="text-3xl font-bold text-slate-900">
-                    {activity?.active_5m ?? 0}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="mt-4">
-              <p className="text-xs text-slate-500">Dakika başına etkin kullanıcı</p>
-              {(() => {
-                const series =
-                  activity?.series ??
-                  Array.from({ length: 30 }).map(() => ({
-                    minute: "",
-                    visitors: 0,
-                  }));
-                const max = Math.max(
-                  1,
-                  ...series.map((item) => item.visitors)
-                );
-                return (
-                  <div
-                    className="mt-3 grid items-end gap-1"
-                    style={{ gridTemplateColumns: "repeat(30, minmax(0, 1fr))" }}
-                  >
-                    {series.map((point, index) => {
-                      const height = Math.round((point.visitors / max) * 80) + 8;
-                      return (
-                        <div
-                          key={`${point.minute}-${index}`}
-                          className="w-full rounded-sm bg-blue-500"
-                          style={{ height: `${height}px` }}
-                          title={`${point.visitors}`}
-                        />
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-              <div className="mt-2 flex justify-between text-[10px] text-slate-400">
-                <span>-30 dk.</span>
-                <span>-1 dk.</span>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     </DashboardLayout>
   );
