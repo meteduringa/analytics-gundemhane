@@ -105,6 +105,7 @@ export async function GET(request: Request) {
     type: "PAGEVIEW";
     createdAt?: { gte?: Date; lte?: Date };
     sessionId?: { in: string[] };
+    visitorId?: { in: string[] };
   } = { websiteId, type: "PAGEVIEW" };
 
   if (startDate || endDate) {
