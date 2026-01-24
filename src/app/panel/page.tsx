@@ -21,9 +21,12 @@ const formatDateInput = (date: Date) => {
 
 const PanelPage = () => {
   const router = useRouter();
-  const [startDate, setStartDate] = useState(() =>
+  const [startDateInput, setStartDateInput] = useState(() =>
     formatDateInput(new Date())
   );
+  const [endDateInput, setEndDateInput] = useState(formatDateInput(new Date()));
+  const [hideShortReadsInput, setHideShortReadsInput] = useState(true);
+  const [startDate, setStartDate] = useState(() => formatDateInput(new Date()));
   const [endDate, setEndDate] = useState(formatDateInput(new Date()));
   const [hideShortReads, setHideShortReads] = useState(true);
   const [ready, setReady] = useState(false);
@@ -151,13 +154,17 @@ const PanelPage = () => {
         </div>
 
         <FiltersBar
-          startValue={startDate}
-          endValue={endDate}
-          hideShortReads={hideShortReads}
-          onStartChange={setStartDate}
-          onEndChange={setEndDate}
-          onToggleShortReads={setHideShortReads}
-          onFilter={() => null}
+          startValue={startDateInput}
+          endValue={endDateInput}
+          hideShortReads={hideShortReadsInput}
+          onStartChange={setStartDateInput}
+          onEndChange={setEndDateInput}
+          onToggleShortReads={setHideShortReadsInput}
+          onFilter={() => {
+            setStartDate(startDateInput);
+            setEndDate(endDateInput);
+            setHideShortReads(hideShortReadsInput);
+          }}
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
