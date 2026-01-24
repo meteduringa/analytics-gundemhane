@@ -32,24 +32,27 @@ export async function GET(request: Request) {
     ORDER BY minute ASC
   `) as BucketRow[];
 
-  const [active30, active5] = await Promise.all([
-    prisma.analyticsEvent.count({
-      where: {
-        websiteId,
-        type: "PAGEVIEW",
-        createdAt: { gte: thirtyMinAgo, lte: now },
-      },
-      distinct: ["visitorId"],
-    }),
-    prisma.analyticsEvent.count({
-      where: {
-        websiteId,
-        type: "PAGEVIEW",
-        createdAt: { gte: fiveMinAgo, lte: now },
-      },
-      distinct: ["visitorId"],
-    }),
+  const [active30Rows, active5Rows] = await Promise.all([
+    prisma.$queryRaw`
+      SELECT COUNT(DISTINCT "visitorId") AS count
+      FROM "analytics_events"
+      WHERE "websiteId" = ${websiteId}
+        AND "type" = 'PAGEVIEW'
+        AND "createdAt" >= ${thirtyMinAgo}
+        AND "createdAt" <= ${now}
+    ` as Promise<{ count: bigint }[]>,
+    prisma.$queryRaw`
+      SELECT COUNT(DISTINCT "visitorId") AS count
+      FROM "analytics_events"
+      WHERE "websiteId" = ${websiteId}
+        AND "type" = 'PAGEVIEW'
+        AND "createdAt" >= ${fiveMinAgo}
+        AND "createdAt" <= ${now}
+    ` as Promise<{ count: bigint }[]>,
   ]);
+
+  const active30 = Number(active30Rows[0]?.count ?? 0);
+  const active5 = Number(active5Rows[0]?.count ?? 0);
 
   const bucketMap = new Map(
     buckets.map((bucket) => [bucket.minute.toISOString(), Number(bucket.visitors)])
