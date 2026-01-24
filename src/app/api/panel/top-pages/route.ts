@@ -86,6 +86,36 @@ export async function GET(request: Request) {
     };
   }
 
+  const standardCount = await prisma.analyticsEvent.count({
+    where: eventWhere,
+  });
+
+  if (standardCount === 0) {
+    const bikPages = await prisma.bIKEvent.groupBy({
+      by: ["url"],
+      where: {
+        websiteId,
+        type: "PAGE_VIEW",
+        ts: {
+          gte: startDate ?? undefined,
+          lte: endDate ?? undefined,
+        },
+        isValid: true,
+        isSuspicious: false,
+      },
+      _count: { url: true },
+      orderBy: { _count: { url: "desc" } },
+      take: limit,
+    });
+
+    return NextResponse.json({
+      pages: bikPages.map((page) => ({
+        url: page.url,
+        pageviews: page._count.url,
+      })),
+    });
+  }
+
   const pages = await prisma.analyticsEvent.groupBy({
     by: ["url"],
     where: eventWhere,

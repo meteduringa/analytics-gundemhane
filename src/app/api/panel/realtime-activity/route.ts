@@ -20,39 +20,87 @@ export async function GET(request: Request) {
   const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
   const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
-  const buckets = (await prisma.$queryRaw`
-    SELECT date_trunc('minute', "createdAt") AS minute,
-           COUNT(DISTINCT "visitorId") AS visitors
-    FROM "analytics_events"
-    WHERE "websiteId" = ${websiteId}
-      AND "type" = 'PAGEVIEW'
-      AND "createdAt" >= ${thirtyMinAgo}
-      AND "createdAt" <= ${now}
-    GROUP BY minute
-    ORDER BY minute ASC
-  `) as BucketRow[];
+  const standardCount = await prisma.analyticsEvent.count({
+    where: {
+      websiteId,
+      type: "PAGEVIEW",
+      createdAt: { gte: thirtyMinAgo, lte: now },
+    },
+  });
 
-  const [active30Rows, active5Rows] = await Promise.all([
-    prisma.$queryRaw`
-      SELECT COUNT(DISTINCT "visitorId") AS count
-      FROM "analytics_events"
-      WHERE "websiteId" = ${websiteId}
-        AND "type" = 'PAGEVIEW'
-        AND "createdAt" >= ${thirtyMinAgo}
-        AND "createdAt" <= ${now}
-    ` as Promise<{ count: bigint }[]>,
-    prisma.$queryRaw`
-      SELECT COUNT(DISTINCT "visitorId") AS count
-      FROM "analytics_events"
-      WHERE "websiteId" = ${websiteId}
-        AND "type" = 'PAGEVIEW'
-        AND "createdAt" >= ${fiveMinAgo}
-        AND "createdAt" <= ${now}
-    ` as Promise<{ count: bigint }[]>,
-  ]);
+  const [buckets, active30Rows, active5Rows] =
+    standardCount > 0
+      ? await Promise.all([
+          prisma.$queryRaw`
+            SELECT date_trunc('minute', "createdAt") AS minute,
+                   COUNT(DISTINCT "visitorId") AS visitors
+            FROM "analytics_events"
+            WHERE "websiteId" = ${websiteId}
+              AND "type" = 'PAGEVIEW'
+              AND "createdAt" >= ${thirtyMinAgo}
+              AND "createdAt" <= ${now}
+            GROUP BY minute
+            ORDER BY minute ASC
+          ` as Promise<BucketRow[]>,
+          prisma.$queryRaw`
+            SELECT COUNT(DISTINCT "visitorId") AS count
+            FROM "analytics_events"
+            WHERE "websiteId" = ${websiteId}
+              AND "type" = 'PAGEVIEW'
+              AND "createdAt" >= ${thirtyMinAgo}
+              AND "createdAt" <= ${now}
+          ` as Promise<{ count: bigint }[]>,
+          prisma.$queryRaw`
+            SELECT COUNT(DISTINCT "visitorId") AS count
+            FROM "analytics_events"
+            WHERE "websiteId" = ${websiteId}
+              AND "type" = 'PAGEVIEW'
+              AND "createdAt" >= ${fiveMinAgo}
+              AND "createdAt" <= ${now}
+          ` as Promise<{ count: bigint }[]>,
+        ])
+      : await Promise.all([
+          prisma.$queryRaw`
+            SELECT date_trunc('minute', "ts") AS minute,
+                   COUNT(DISTINCT "visitorId") AS visitors
+            FROM "bik_events"
+            WHERE "websiteId" = ${websiteId}
+              AND "type" = 'PAGE_VIEW'
+              AND "ts" >= ${thirtyMinAgo}
+              AND "ts" <= ${now}
+              AND "isValid" = true
+              AND "isSuspicious" = false
+            GROUP BY minute
+            ORDER BY minute ASC
+          ` as Promise<BucketRow[]>,
+          prisma.$queryRaw`
+            SELECT COUNT(DISTINCT "visitorId") AS count
+            FROM "bik_events"
+            WHERE "websiteId" = ${websiteId}
+              AND "type" = 'PAGE_VIEW'
+              AND "ts" >= ${thirtyMinAgo}
+              AND "ts" <= ${now}
+              AND "isValid" = true
+              AND "isSuspicious" = false
+          ` as Promise<{ count: bigint }[]>,
+          prisma.$queryRaw`
+            SELECT COUNT(DISTINCT "visitorId") AS count
+            FROM "bik_events"
+            WHERE "websiteId" = ${websiteId}
+              AND "type" = 'PAGE_VIEW'
+              AND "ts" >= ${fiveMinAgo}
+              AND "ts" <= ${now}
+              AND "isValid" = true
+              AND "isSuspicious" = false
+          ` as Promise<{ count: bigint }[]>,
+        ]);
 
-  const active30 = Number(active30Rows[0]?.count ?? 0);
-  const active5 = Number(active5Rows[0]?.count ?? 0);
+  const active30Count = Number(
+    (active30Rows as { count: bigint }[])[0]?.count ?? 0
+  );
+  const active5Count = Number(
+    (active5Rows as { count: bigint }[])[0]?.count ?? 0
+  );
 
   const bucketMap = new Map(
     buckets.map((bucket) => [bucket.minute.toISOString(), Number(bucket.visitors)])
@@ -67,8 +115,8 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    active_30m: active30,
-    active_5m: active5,
+    active_30m: active30Count,
+    active_5m: active5Count,
     series,
     now: now.toISOString(),
   });
