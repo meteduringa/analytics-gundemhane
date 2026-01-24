@@ -15,10 +15,15 @@
   const hostUrl =
     process.env.NEXT_PUBLIC_HOST_URL ?? "https://analytics.gundemhane.com";
 
-  const externalSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/tracker.js"
-    data-website-id="${websiteId}"
-    data-host-url="${hostUrl}">
-  </script>`;
+const externalSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/tracker.js"
+  data-website-id="${websiteId}"
+  data-host-url="${hostUrl}">
+</script>`;
+
+const bikSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/bik-tracker.js"
+  data-site-id="${websiteId}"
+  data-host-url="${hostUrl}">
+</script>`;
 
   const inlineSnippetFor = (websiteId: string) => `<script data-website-id="${websiteId}" data-host-url="${hostUrl}">
   (function () {
@@ -102,8 +107,16 @@
   })();
   </script>`;
 
-  const snippetFor = (websiteId: string, mode: "external" | "inline") =>
-    mode === "inline" ? inlineSnippetFor(websiteId) : externalSnippetFor(websiteId);
+const snippetFor = (
+  websiteId: string,
+  mode: "external" | "inline",
+  kind: "standard" | "bik"
+) => {
+  if (kind === "bik") {
+    return bikSnippetFor(websiteId);
+  }
+  return mode === "inline" ? inlineSnippetFor(websiteId) : externalSnippetFor(websiteId);
+};
 
   export default function AdminWebsites({
     initialWebsites,
@@ -121,9 +134,8 @@
     const [newName, setNewName] = useState("");
     const [newDomains, setNewDomains] = useState("");
     const [error, setError] = useState<string | null>(null);
-    const [snippetMode, setSnippetMode] = useState<"external" | "inline">(
-      "external"
-    );
+  const [snippetMode, setSnippetMode] = useState<"external" | "inline">("external");
+  const [snippetKind, setSnippetKind] = useState<"standard" | "bik">("standard");
 
     const sortedWebsites = useMemo(
       () =>
@@ -214,9 +226,11 @@
       setWebsites((prev) => prev.filter((site) => site.id !== id));
     };
 
-    const copySnippet = async (websiteId: string) => {
-      await navigator.clipboard.writeText(snippetFor(websiteId, snippetMode));
-    };
+  const copySnippet = async (websiteId: string) => {
+    await navigator.clipboard.writeText(
+      snippetFor(websiteId, snippetMode, snippetKind)
+    );
+  };
 
     return (
       <section className="space-y-6">
@@ -228,6 +242,31 @@
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+              Snippet türü
+            </span>
+            <button
+              type="button"
+              onClick={() => setSnippetKind("standard")}
+              className={`rounded-full border px-3 py-1 transition ${
+                snippetKind === "standard"
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              }`}
+            >
+              Standart
+            </button>
+            <button
+              type="button"
+              onClick={() => setSnippetKind("bik")}
+              className={`rounded-full border px-3 py-1 transition ${
+                snippetKind === "bik"
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              }`}
+            >
+              BIK
+            </button>
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
               Snippet modu
             </span>
@@ -250,6 +289,8 @@
                   ? "border-slate-900 bg-slate-900 text-white"
                   : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
               }`}
+              disabled={snippetKind === "bik"}
+              title={snippetKind === "bik" ? "BIK için sadece external kullanılır." : undefined}
             >
               Inline (CSP safe)
             </button>
@@ -308,7 +349,7 @@
                 }
               />
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-mono text-slate-600">
-                {snippetFor(site.id, snippetMode)}
+                {snippetFor(site.id, snippetMode, snippetKind)}
               </div>
             </div>,
             <span
@@ -359,4 +400,3 @@
       </section>
     );
   }
-

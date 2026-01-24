@@ -47,6 +47,19 @@ const PanelPage = () => {
     dailyUniqueVisitors: number;
     liveVisitors: number;
   } | null>(null);
+  const [bikMetrics, setBikMetrics] = useState<{
+    daily_unique_visitors: number;
+    daily_direct_unique_visitors: number;
+    daily_pageviews: number;
+    daily_sessions: number;
+    daily_avg_time_on_site_seconds: number;
+    direct_ratio: number;
+    foreign_traffic_adjusted: number;
+  } | null>(null);
+  const [bikRealtime, setBikRealtime] = useState<{
+    live_visitors: number;
+    live_pageviews: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -106,6 +119,26 @@ const PanelPage = () => {
     };
     loadMetrics();
   }, [endDate, hideShortReads, selectedSiteId, startDate]);
+
+  useEffect(() => {
+    const loadBikMetrics = async () => {
+      if (!selectedSiteId) return;
+      const day = startDate;
+      const [dayResponse, realtimeResponse] = await Promise.all([
+        fetch(`/analytics/day?site_id=${selectedSiteId}&date=${day}`),
+        fetch(`/analytics/realtime?site_id=${selectedSiteId}`),
+      ]);
+      const dayPayload = await dayResponse.json();
+      const realtimePayload = await realtimeResponse.json();
+      if (dayResponse.ok) {
+        setBikMetrics(dayPayload);
+      }
+      if (realtimeResponse.ok) {
+        setBikRealtime(realtimePayload);
+      }
+    };
+    loadBikMetrics();
+  }, [selectedSiteId, startDate]);
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
@@ -196,6 +229,82 @@ const PanelPage = () => {
             accent="text-rose-600"
             tone="bg-rose-50"
           />
+        </div>
+
+        <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                BIK-like
+              </p>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Resmiye Yakın Metrikler
+              </h2>
+            </div>
+            <span className="text-xs text-slate-400">
+              {startDate} günü için
+            </span>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatsCard
+              title="BIK Tekil"
+              value={`${bikMetrics?.daily_unique_visitors ?? 0}`}
+              detail="Günlük tekil"
+              accent="text-slate-900"
+              tone="bg-slate-50"
+            />
+            <StatsCard
+              title="BIK Doğrudan"
+              value={`${bikMetrics?.daily_direct_unique_visitors ?? 0}`}
+              detail="Günlük direct"
+              accent="text-emerald-700"
+              tone="bg-emerald-50"
+            />
+            <StatsCard
+              title="BIK Pageview"
+              value={`${bikMetrics?.daily_pageviews ?? 0}`}
+              detail="Günlük görüntülenme"
+              accent="text-indigo-700"
+              tone="bg-indigo-50"
+            />
+            <StatsCard
+              title="BIK Ortalama Süre"
+              value={formatDuration(
+                bikMetrics?.daily_avg_time_on_site_seconds ?? 0
+              )}
+              detail="Session ortalaması"
+              accent="text-rose-600"
+              tone="bg-rose-50"
+            />
+            <StatsCard
+              title="BIK Anlık Tekil"
+              value={`${bikRealtime?.live_visitors ?? 0}`}
+              detail="Son 5 dakika"
+              accent="text-slate-900"
+              tone="bg-amber-50"
+            />
+            <StatsCard
+              title="BIK Direct Oran"
+              value={`${Math.round((bikMetrics?.direct_ratio ?? 0) * 100)}%`}
+              detail="Direct / Tekil"
+              accent="text-cyan-700"
+              tone="bg-cyan-50"
+            />
+            <StatsCard
+              title="BIK Yurtdışı Ayarlı"
+              value={`${bikMetrics?.foreign_traffic_adjusted ?? 0}`}
+              detail="GENEL için %10"
+              accent="text-slate-900"
+              tone="bg-slate-50"
+            />
+            <StatsCard
+              title="BIK Session"
+              value={`${bikMetrics?.daily_sessions ?? 0}`}
+              detail="Günlük oturum"
+              accent="text-amber-700"
+              tone="bg-amber-50"
+            />
+          </div>
         </div>
 
         <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">

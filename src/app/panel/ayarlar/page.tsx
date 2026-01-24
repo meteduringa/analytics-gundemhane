@@ -13,6 +13,11 @@ const buildExternalSnippet = (websiteId: string) => `<script async src="${hostUr
   data-host-url="${hostUrl}">
 </script>`;
 
+const buildBikSnippet = (websiteId: string) => `<script async src="${hostUrl}/bik-tracker.js"
+  data-site-id="${websiteId}"
+  data-host-url="${hostUrl}">
+</script>`;
+
 const buildInlineSnippet = (websiteId: string) => `<script data-website-id="${websiteId}" data-host-url="${hostUrl}">
 (function () {
   var s = document.currentScript;
@@ -111,6 +116,7 @@ const SettingsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [snippet, setSnippet] = useState("");
+  const [bikSnippet, setBikSnippet] = useState("");
   const [inlineSnippet, setInlineSnippet] = useState("");
   const [sites, setSites] = useState<
     { id: string; name: string; allowedDomains: string[] }[]
@@ -120,7 +126,9 @@ const SettingsPage = () => {
     email: string;
     password: string;
   } | null>(null);
-  const [copied, setCopied] = useState<"external" | "inline" | null>(null);
+  const [copied, setCopied] = useState<"external" | "inline" | "bik" | null>(
+    null
+  );
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] = useState("");
 
@@ -210,8 +218,10 @@ const SettingsPage = () => {
       const websiteId = payload.website.id as string;
       const external = buildExternalSnippet(websiteId);
       const inline = buildInlineSnippet(websiteId);
+      const bik = buildBikSnippet(websiteId);
       setSnippet(external);
       setInlineSnippet(inline);
+      setBikSnippet(bik);
       setSites((prev) => [payload.website, ...prev]);
       if (payload.user?.email) {
         setCreatedUser({ email: payload.user.email, password: userPassword });
@@ -227,7 +237,10 @@ const SettingsPage = () => {
     }
   };
 
-  const handleCopy = async (value: string, mode: "external" | "inline") => {
+  const handleCopy = async (
+    value: string,
+    mode: "external" | "inline" | "bik"
+  ) => {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
@@ -368,6 +381,29 @@ const SettingsPage = () => {
               </button>
             </div>
 
+            <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 text-xs text-slate-600">
+              <p className="font-semibold text-slate-700">BIK Script</p>
+              <p className="mt-1 text-slate-500">
+                BIK-like analitik için bu snippet’i ekleyin.
+              </p>
+              <pre className="mt-3 whitespace-pre-wrap rounded-xl bg-white p-3 text-[11px] text-slate-700">
+                {bikSnippet || "BIK snippet burada görünecek."}
+              </pre>
+              <button
+                type="button"
+                onClick={() => handleCopy(bikSnippet, "bik")}
+                className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600"
+                disabled={!bikSnippet}
+              >
+                {copied === "bik" ? (
+                  <ClipboardCheck className="h-3 w-3" />
+                ) : (
+                  <Clipboard className="h-3 w-3" />
+                )}
+                Kopyala
+              </button>
+            </div>
+
             <div
               className={`rounded-2xl border p-4 text-xs ${
                 hasCsp
@@ -454,6 +490,14 @@ const SettingsPage = () => {
                     >
                       <Clipboard className="h-3 w-3" />
                       Inline Kopyala
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(buildBikSnippet(site.id), "bik")}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600"
+                    >
+                      <Clipboard className="h-3 w-3" />
+                      BIK Script
                     </button>
                   </div>
                 </div>
