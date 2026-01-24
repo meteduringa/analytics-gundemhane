@@ -60,6 +60,7 @@ docker-compose up -d --build
 ## BIK-like Analytics (MVP)
 
 Bu modül, BIK raporlarına yakın metrikleri aynı gün dakika bazında üretmek için tasarlandi.
+Deploy tetikleme notu: bu satır otomatik yayına alınacaktır.
 
 ### BIK Tracker Snippet
 
