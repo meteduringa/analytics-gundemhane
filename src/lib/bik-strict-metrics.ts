@@ -3,7 +3,6 @@ import { getBikConfig } from "@/lib/bik-config";
 import { getIstanbulDayRange } from "@/lib/bik-time";
 
 type StrictMetrics = {
-  date: string;
   daily_unique_visitors_strict: number;
   daily_direct_unique_visitors_strict: number;
   daily_pageviews_strict: number;
@@ -15,7 +14,7 @@ export const getBikStrictDayMetrics = async (
   siteId: string,
   dayDate: Date
 ): Promise<StrictMetrics> => {
-  const { start, end, dayString } = getIstanbulDayRange(dayDate);
+  const { start, end } = getIstanbulDayRange(dayDate);
   const config = await getBikConfig(siteId);
 
   const events = await prisma.analyticsEvent.findMany({
@@ -100,7 +99,6 @@ export const getBikStrictDayMetrics = async (
     sessionCount > 0 ? Math.round(totalDurationSeconds / sessionCount) : 0;
 
   return {
-    date: dayString,
     daily_unique_visitors_strict: uniqueVisitors.size,
     daily_direct_unique_visitors_strict: directUnique,
     daily_pageviews_strict: dailyPageviews,
