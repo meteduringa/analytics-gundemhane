@@ -23,4 +23,4 @@ jobs:
             cd /opt/analytics
             git pull origin main
             export COMPOSE_PROJECT_NAME=analytics-gundemhane
-            docker compose up -d --build --force-recreate app caddy
+            docker compose up -d --force-recreate app caddy
