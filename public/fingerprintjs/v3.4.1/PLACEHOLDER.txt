@@ -1,0 +1,5 @@
+Place FingerprintJS v3.4.1 browser bundle here as fp.min.js.
+Expected path:
+/fingerprintjs/v3.4.1/fp.min.js
+
+This file is a placeholder to keep the directory in git.

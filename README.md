@@ -71,6 +71,28 @@ Deploy tetikleme notu: bu satır otomatik yayına alınacaktır.
 </script>
 ```
 
+### BIK_STRICT Tracker Snippet
+
+```html
+<script async src="https://analytics.gundemhane.com/bik-strict-tracker.js"
+  data-site-id="UUID"
+  data-host-url="https://analytics.gundemhane.com">
+</script>
+```
+
+### BIK_STRICT Notlar (tracker davranisini yansitir)
+
+- Tekil ziyaretci FingerprintJS visitorId ile hesaplanir.
+- Pageview tetikleri:
+  - `document.readyState === "complete"`
+  - `history.pushState/replaceState` URL degisimi
+- `url` = `pathname + search` (hash yok)
+- `referrer` = `document.referrer` (ham deger)
+- Heartbeat yok; sure/sessiyon sayisi server tarafinda pageview farklarindan turetilir.
+- FingerprintJS dosyasi CDN yerine sunucudan yuklenir:
+  - Beklenen yol: `/fingerprintjs/v3.4.1/fp.min.js`
+  - Gerekirse `data-fingerprint-url` ile farkli bir yol verilebilir.
+
 ### BIK API Endpoints
 
 - `GET /analytics/realtime?site_id=...`
