@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseDayParam } from "@/lib/bik-time";
 import { getBikDayMetrics } from "@/lib/bik-metrics";
+import { getBikStrictDayMetrics } from "@/lib/bik-strict-metrics";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,10 @@ export async function GET(request: Request) {
   }
 
   const dayDate = parseDayParam(dateParam) ?? new Date();
-  const metrics = await getBikDayMetrics(siteId, dayDate);
+  const [metrics, strictMetrics] = await Promise.all([
+    getBikDayMetrics(siteId, dayDate),
+    getBikStrictDayMetrics(siteId, dayDate),
+  ]);
 
   await prisma.bIKRollupDay.upsert({
     where: {
@@ -51,5 +55,6 @@ export async function GET(request: Request) {
   return NextResponse.json({
     site_id: siteId,
     ...metrics,
+    ...strictMetrics,
   });
 }

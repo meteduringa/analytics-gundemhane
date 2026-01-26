@@ -88,7 +88,7 @@ export async function GET(request: Request) {
   }
 
   const standardCount = await prisma.analyticsEvent.count({
-    where: eventWhere,
+    where: { ...eventWhere, mode: "RAW" },
   });
 
   if (standardCount === 0) {
@@ -122,7 +122,7 @@ export async function GET(request: Request) {
 
   const pages = await prisma.analyticsEvent.groupBy({
     by: ["url"],
-    where: eventWhere,
+    where: { ...eventWhere, mode: "RAW" },
     _count: { url: true },
     orderBy: { _count: { url: "desc" } },
     take: limit,

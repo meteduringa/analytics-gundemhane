@@ -15,6 +15,11 @@ type DiagnosticsResponse = {
   counted_sessions: number;
   counted_pageviews: number;
   counted_engagement_avg: number;
+  daily_unique_visitors_strict: number;
+  daily_direct_unique_visitors_strict: number;
+  daily_pageviews_strict: number;
+  daily_sessions_strict: number;
+  daily_avg_time_on_site_seconds_strict: number;
   invalid_sessions_count: number;
   suspicious_sessions_count: number;
   adblock_suspect_count: number;
@@ -158,7 +163,7 @@ const AdminBikDiagnostics = ({ websites }: { websites: Website[] }) => {
             </div>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2">
+          <section className="grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                 Raw vs Counted
@@ -186,6 +191,44 @@ const AdminBikDiagnostics = ({ websites }: { websites: Website[] }) => {
                   <span>Avg Engagement (s)</span>
                   <span className="font-semibold text-slate-900">
                     {data.raw_engagement_avg} → {data.counted_engagement_avg}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                BIK_STRICT
+              </p>
+              <div className="mt-4 grid gap-3 text-sm text-slate-700">
+                <div className="flex items-center justify-between">
+                  <span>Uniques</span>
+                  <span className="font-semibold text-slate-900">
+                    {data.daily_unique_visitors_strict}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Direct uniques</span>
+                  <span className="font-semibold text-slate-900">
+                    {data.daily_direct_unique_visitors_strict}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Pageviews</span>
+                  <span className="font-semibold text-slate-900">
+                    {data.daily_pageviews_strict}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Sessions</span>
+                  <span className="font-semibold text-slate-900">
+                    {data.daily_sessions_strict}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Avg time (s)</span>
+                  <span className="font-semibold text-slate-900">
+                    {data.daily_avg_time_on_site_seconds_strict}
                   </span>
                 </div>
               </div>

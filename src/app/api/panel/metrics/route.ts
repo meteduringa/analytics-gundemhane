@@ -103,10 +103,11 @@ export async function GET(request: Request) {
   const eventWhere: {
     websiteId: string;
     type: "PAGEVIEW";
+    mode: string;
     createdAt?: { gte?: Date; lte?: Date };
     sessionId?: { in: string[] };
     visitorId?: { in: string[] };
-  } = { websiteId, type: "PAGEVIEW" };
+  } = { websiteId, type: "PAGEVIEW", mode: "RAW" };
 
   if (startDate || endDate) {
     eventWhere.createdAt = {

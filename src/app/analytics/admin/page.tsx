@@ -47,6 +47,7 @@ import AdminBikCalibration from "@/components/analytics/AdminBikCalibration";
       prisma.analyticsEvent.count({
         where: {
           type: "PAGEVIEW",
+          mode: "RAW",
           createdAt: {
             gte: last24Range.startUtc,
             lt: last24Range.endUtc,

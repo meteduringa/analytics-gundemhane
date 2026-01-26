@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     where: {
       websiteId,
       type: "PAGEVIEW",
+      mode: "RAW",
       createdAt: { gte: thirtyMinAgo, lte: now },
     },
   });
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
         FROM "analytics_events"
         WHERE "websiteId" = ${websiteId}
           AND "type" = 'PAGEVIEW'
+          AND "mode" = 'RAW'
           AND "createdAt" >= ${thirtyMinAgo}
           AND "createdAt" <= ${now}
         GROUP BY minute
@@ -52,6 +54,7 @@ export async function GET(request: Request) {
         FROM "analytics_events"
         WHERE "websiteId" = ${websiteId}
           AND "type" = 'PAGEVIEW'
+          AND "mode" = 'RAW'
           AND "createdAt" >= ${thirtyMinAgo}
           AND "createdAt" <= ${now}
       ` as Promise<{ count: bigint }[]>,
@@ -60,6 +63,7 @@ export async function GET(request: Request) {
         FROM "analytics_events"
         WHERE "websiteId" = ${websiteId}
           AND "type" = 'PAGEVIEW'
+          AND "mode" = 'RAW'
           AND "createdAt" >= ${fiveMinAgo}
           AND "createdAt" <= ${now}
       ` as Promise<{ count: bigint }[]>,

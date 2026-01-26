@@ -50,6 +50,8 @@
 
   const asString = (value: unknown) =>
     typeof value === "string" ? value : value ? String(value) : null;
+  const asStringAllowEmpty = (value: unknown) =>
+    typeof value === "string" ? value : value === "" ? "" : value ? String(value) : null;
 
   export async function OPTIONS(request: Request) {
     return new NextResponse(null, {
@@ -90,8 +92,9 @@
     const url = String(payload.url ?? "");
     const visitorId = String(payload.visitor_id ?? "");
     const sessionId = String(payload.session_id ?? "");
+    const isStrict = type === "bik_pageview";
 
-    if (!websiteId || !type || !url || !visitorId || !sessionId) {
+    if (!websiteId || !type || !url || !visitorId || (!isStrict && !sessionId)) {
       return NextResponse.json(
         { error: "Invalid payload." },
         { status: 400, headers: corsHeaders(origin) }
@@ -129,7 +132,13 @@
       clientTs && !Number.isNaN(clientTs.getTime()) ? clientTs : null;
 
     const eventType =
-      type === "pageview" ? "PAGEVIEW" : type === "event" ? "EVENT" : null;
+      type === "pageview"
+        ? "PAGEVIEW"
+        : type === "event"
+        ? "EVENT"
+        : type === "bik_pageview"
+        ? "PAGEVIEW"
+        : null;
 
     if (!eventType) {
       return NextResponse.json(
@@ -142,18 +151,20 @@
       typeof payload.event_data === "string"
         ? JSON.parse(payload.event_data)
         : payload.event_data ?? undefined;
+    const strictHostname = asString(payload.hostname);
 
     const createdAt = new Date();
     const event = await prisma.analyticsEvent.create({
       data: {
         websiteId,
         type: eventType,
+        mode: isStrict ? "BIK_STRICT" : "RAW",
         eventName: asString(payload.event_name),
-        eventData,
+        eventData: isStrict ? { hostname: strictHostname ?? undefined } : eventData,
         visitorId,
-        sessionId,
+        sessionId: isStrict ? visitorId : sessionId,
         url,
-        referrer: asString(payload.referrer),
+        referrer: isStrict ? asStringAllowEmpty(payload.referrer) : asString(payload.referrer),
         screen: asString(payload.screen),
         language: asString(payload.language),
         userAgent:
@@ -165,75 +176,78 @@
       },
     });
 
-    await prisma.analyticsSession.upsert({
-      where: {
-        websiteId_sessionId: {
+    if (!isStrict) {
+      await prisma.analyticsSession.upsert({
+        where: {
+          websiteId_sessionId: {
+            websiteId,
+            sessionId,
+          },
+        },
+        create: {
           websiteId,
           sessionId,
+          visitorId,
+          startedAt: createdAt,
+          lastSeenAt: createdAt,
         },
-      },
-      create: {
-        websiteId,
-        sessionId,
-        visitorId,
-        startedAt: createdAt,
-        lastSeenAt: createdAt,
-      },
-      update: {
-        lastSeenAt: createdAt,
-      },
-    });
+        update: {
+          lastSeenAt: createdAt,
+        },
+      });
+    }
 
     const nowMs = createdAt.getTime();
-    await redis.zAdd(`analytics:online:${websiteId}`, {
-      score: nowMs,
-      value: sessionId,
-    });
-    await redis.zRemRangeByScore(
-      `analytics:online:${websiteId}`,
-      0,
-      nowMs - ONLINE_WINDOW_MS
-    );
-
-    if (eventType === "PAGEVIEW") {
-      await redis.zAdd(`analytics:pageviews:${websiteId}`, {
+    if (!isStrict) {
+      await redis.zAdd(`analytics:online:${websiteId}`, {
         score: nowMs,
-        value: event.id,
+        value: sessionId,
       });
       await redis.zRemRangeByScore(
-        `analytics:pageviews:${websiteId}`,
+        `analytics:online:${websiteId}`,
         0,
-        nowMs - LIVE_WINDOW_MS
+        nowMs - ONLINE_WINDOW_MS
       );
-    }
 
-    if (eventType === "EVENT") {
-      await redis.zAdd(`analytics:events:${websiteId}`, {
-        score: nowMs,
-        value: event.id,
-      });
-      await redis.zRemRangeByScore(
-        `analytics:events:${websiteId}`,
-        0,
-        nowMs - ALARM_EVENT_WINDOW_MS
+      if (eventType === "PAGEVIEW") {
+        await redis.zAdd(`analytics:pageviews:${websiteId}`, {
+          score: nowMs,
+          value: event.id,
+        });
+        await redis.zRemRangeByScore(
+          `analytics:pageviews:${websiteId}`,
+          0,
+          nowMs - LIVE_WINDOW_MS
+        );
+      }
+
+      if (eventType === "EVENT") {
+        await redis.zAdd(`analytics:events:${websiteId}`, {
+          score: nowMs,
+          value: event.id,
+        });
+        await redis.zRemRangeByScore(
+          `analytics:events:${websiteId}`,
+          0,
+          nowMs - ALARM_EVENT_WINDOW_MS
+        );
+      }
+
+      await redis.lPush(
+        `analytics:stream:${websiteId}`,
+        JSON.stringify({
+          id: event.id,
+          type: eventType,
+          url,
+          createdAt: createdAt.toISOString(),
+          eventName: event.eventName,
+        })
       );
+      await redis.lTrim(`analytics:stream:${websiteId}`, 0, 199);
     }
-
-    await redis.lPush(
-      `analytics:stream:${websiteId}`,
-      JSON.stringify({
-        id: event.id,
-        type: eventType,
-        url,
-        createdAt: createdAt.toISOString(),
-        eventName: event.eventName,
-      })
-    );
-    await redis.lTrim(`analytics:stream:${websiteId}`, 0, 199);
 
     return NextResponse.json(
       { ok: true },
       { status: 200, headers: corsHeaders(origin) }
     );
   }
-

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getBikConfig } from "@/lib/bik-config";
+import { getBikStrictDayMetrics } from "@/lib/bik-strict-metrics";
 import { getIstanbulDayRange, parseDayParam } from "@/lib/bik-time";
 
 export const runtime = "nodejs";
@@ -260,6 +261,8 @@ export async function GET(request: Request) {
       ? Math.round(countedEngagementMs / 1000 / countedSessions.length)
       : 0;
 
+  const strictMetrics = await getBikStrictDayMetrics(siteId, dayDate);
+
   return NextResponse.json({
     date: dayString,
     raw_uniques: rawVisitors.size,
@@ -271,6 +274,7 @@ export async function GET(request: Request) {
     counted_sessions: countedSessions.length,
     counted_pageviews: countedPageviews,
     counted_engagement_avg: countedEngagementAvg,
+    ...strictMetrics,
     invalid_sessions_count: invalidSessions.length,
     suspicious_sessions_count: suspiciousSessions.length,
     adblock_suspect_count: adblockSuspectCount,

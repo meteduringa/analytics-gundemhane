@@ -76,14 +76,15 @@ model AnalyticsWebsite {
     @@map("analytics_user_websites")
   }
 
-  model AnalyticsEvent {
-    id              String             @id @default(uuid())
-    websiteId       String
-    type            AnalyticsEventType
-    eventName       String?
-    eventData       Json?
-    visitorId       String
-    sessionId       String
+model AnalyticsEvent {
+  id              String             @id @default(uuid())
+  websiteId       String
+  type            AnalyticsEventType
+  mode            String             @default("RAW")
+  eventName       String?
+  eventData       Json?
+  visitorId       String
+  sessionId       String
     url             String
     referrer        String?
     screen          String?
@@ -93,12 +94,13 @@ model AnalyticsWebsite {
     createdAt       DateTime           @default(now())
     website         AnalyticsWebsite   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
 
-    @@index([websiteId, createdAt])
-    @@index([websiteId, sessionId])
-    @@index([websiteId, visitorId])
-    @@index([websiteId, type, createdAt])
-    @@map("analytics_events")
-  }
+  @@index([websiteId, createdAt])
+  @@index([websiteId, mode, createdAt])
+  @@index([websiteId, sessionId])
+  @@index([websiteId, visitorId])
+  @@index([websiteId, type, createdAt])
+  @@map("analytics_events")
+}
 
   model AnalyticsSession {
     id         String            @id @default(uuid())
@@ -143,6 +145,10 @@ model BIKConfig {
   engagementMinVisibleMs     Int      @default(1000)
   engagementFullMs           Int      @default(5000)
   suspiciousSoftMode         Boolean  @default(true)
+  strictSessionInactivityMinutes Int  @default(35)
+  strictMaxGapSeconds        Int      @default(1800)
+  strictLastPageEstimateSeconds Int  @default(30)
+  strictDirectReferrerEmptyOnly Boolean @default(true)
   avgTimeMode                String   @default("SESSION")
   cookieLessAggressiveness   Float    @default(1.0)
   category                   String   @default("GENEL")

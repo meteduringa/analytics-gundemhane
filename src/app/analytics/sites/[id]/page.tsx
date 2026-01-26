@@ -35,7 +35,7 @@
     };
 
     const pageviewsPromise = prisma.analyticsEvent.count({
-      where: { ...where, type: PAGEVIEW_EVENT },
+      where: { ...where, type: PAGEVIEW_EVENT, mode: "RAW" },
     });
 
     const visitorRowsPromise = prisma.$queryRaw`
@@ -45,6 +45,7 @@
         AND "createdAt" >= ${range.startUtc}
         AND "createdAt" < ${range.endUtc}
         AND "type" = ${PAGEVIEW_EVENT}::"AnalyticsEventType"
+        AND "mode" = 'RAW'
     ` as Promise<CountRow[]>;
 
     const avgRowsPromise = prisma.$queryRaw`

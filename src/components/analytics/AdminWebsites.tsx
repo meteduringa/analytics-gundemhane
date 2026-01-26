@@ -25,6 +25,11 @@ const bikSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/bik-
   data-host-url="${hostUrl}">
 </script>`;
 
+const bikStrictSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/bik-strict-tracker.js"
+  data-site-id="${websiteId}"
+  data-host-url="${hostUrl}">
+</script>`;
+
   const inlineSnippetFor = (websiteId: string) => `<script data-website-id="${websiteId}" data-host-url="${hostUrl}">
   (function () {
     var s = document.currentScript;
@@ -110,10 +115,13 @@ const bikSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/bik-
 const snippetFor = (
   websiteId: string,
   mode: "external" | "inline",
-  kind: "standard" | "bik"
+  kind: "standard" | "bik" | "bik_strict"
 ) => {
   if (kind === "bik") {
     return bikSnippetFor(websiteId);
+  }
+  if (kind === "bik_strict") {
+    return bikStrictSnippetFor(websiteId);
   }
   return mode === "inline" ? inlineSnippetFor(websiteId) : externalSnippetFor(websiteId);
 };
@@ -135,7 +143,9 @@ const snippetFor = (
     const [newDomains, setNewDomains] = useState("");
     const [error, setError] = useState<string | null>(null);
   const [snippetMode, setSnippetMode] = useState<"external" | "inline">("external");
-  const [snippetKind, setSnippetKind] = useState<"standard" | "bik">("standard");
+  const [snippetKind, setSnippetKind] = useState<"standard" | "bik" | "bik_strict">(
+    "standard"
+  );
 
     const sortedWebsites = useMemo(
       () =>
@@ -267,6 +277,17 @@ const snippetFor = (
             >
               BIK
             </button>
+            <button
+              type="button"
+              onClick={() => setSnippetKind("bik_strict")}
+              className={`rounded-full border px-3 py-1 transition ${
+                snippetKind === "bik_strict"
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              }`}
+            >
+              BIK_STRICT
+            </button>
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
               Snippet modu
             </span>
@@ -289,8 +310,12 @@ const snippetFor = (
                   ? "border-slate-900 bg-slate-900 text-white"
                   : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
               }`}
-              disabled={snippetKind === "bik"}
-              title={snippetKind === "bik" ? "BIK için sadece external kullanılır." : undefined}
+              disabled={snippetKind !== "standard"}
+              title={
+                snippetKind !== "standard"
+                  ? "BIK ve BIK_STRICT için sadece external kullanılır."
+                  : undefined
+              }
             >
               Inline (CSP safe)
             </button>

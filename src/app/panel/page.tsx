@@ -47,6 +47,11 @@ const PanelPage = () => {
     daily_avg_time_on_site_seconds: number;
     direct_ratio: number;
     foreign_traffic_adjusted: number;
+    daily_unique_visitors_strict: number;
+    daily_direct_unique_visitors_strict: number;
+    daily_pageviews_strict: number;
+    daily_sessions_strict: number;
+    daily_avg_time_on_site_seconds_strict: number;
   } | null>(null);
   const [bikRealtime, setBikRealtime] = useState<{
     live_visitors: number;
@@ -224,7 +229,7 @@ const PanelPage = () => {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                BIK-like
+                BIK_STRICT
               </p>
               <h2 className="text-lg font-semibold text-slate-900">
                 Resmiye Yakın Metrikler
@@ -237,31 +242,31 @@ const PanelPage = () => {
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatsCard
               title="BIK Tekil"
-              value={`${bikMetrics?.daily_unique_visitors ?? 0}`}
-              detail="Günlük tekil"
+              value={`${bikMetrics?.daily_unique_visitors_strict ?? 0}`}
+              detail="Günlük tekil (strict)"
               accent="text-slate-900"
               tone="bg-slate-50"
             />
             <StatsCard
               title="BIK Doğrudan"
-              value={`${bikMetrics?.daily_direct_unique_visitors ?? 0}`}
-              detail="Günlük direct"
+              value={`${bikMetrics?.daily_direct_unique_visitors_strict ?? 0}`}
+              detail="Günlük direct (strict)"
               accent="text-emerald-700"
               tone="bg-emerald-50"
             />
             <StatsCard
               title="BIK Pageview"
-              value={`${bikMetrics?.daily_pageviews ?? 0}`}
-              detail="Günlük görüntülenme"
+              value={`${bikMetrics?.daily_pageviews_strict ?? 0}`}
+              detail="Günlük görüntülenme (strict)"
               accent="text-indigo-700"
               tone="bg-indigo-50"
             />
             <StatsCard
               title="BIK Ortalama Süre"
               value={formatDuration(
-                bikMetrics?.daily_avg_time_on_site_seconds ?? 0
+                bikMetrics?.daily_avg_time_on_site_seconds_strict ?? 0
               )}
-              detail="Session ortalaması"
+              detail="Session ortalaması (strict)"
               accent="text-rose-600"
               tone="bg-rose-50"
             />
@@ -275,21 +280,21 @@ const PanelPage = () => {
             <StatsCard
               title="BIK Direct Oran"
               value={`${Math.round((bikMetrics?.direct_ratio ?? 0) * 100)}%`}
-              detail="Direct / Tekil"
+              detail="Direct / Tekil (legacy)"
               accent="text-cyan-700"
               tone="bg-cyan-50"
             />
             <StatsCard
               title="BIK Yurtdışı Ayarlı"
               value={`${bikMetrics?.foreign_traffic_adjusted ?? 0}`}
-              detail="GENEL için %10"
+              detail="Legacy %10"
               accent="text-slate-900"
               tone="bg-slate-50"
             />
             <StatsCard
               title="BIK Session"
-              value={`${bikMetrics?.daily_sessions ?? 0}`}
-              detail="Günlük oturum"
+              value={`${bikMetrics?.daily_sessions_strict ?? 0}`}
+              detail="Günlük oturum (strict)"
               accent="text-amber-700"
               tone="bg-amber-50"
             />
