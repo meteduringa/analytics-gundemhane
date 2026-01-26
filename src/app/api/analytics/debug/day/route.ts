@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getBikConfig } from "@/lib/bik-config";
 import { getBikStrictDayMetrics } from "@/lib/bik-strict-metrics";
+import { getRedis } from "@/lib/redis";
 import { getIstanbulDayRange, parseDayParam } from "@/lib/bik-time";
 
 export const runtime = "nodejs";
@@ -72,6 +73,7 @@ export async function GET(request: Request) {
 
   const { start, end, dayString } = getIstanbulDayRange(dayDate);
   const config = await getBikConfig(siteId);
+  const redis = await getRedis();
   const includeSuspiciousInCounted = config.suspiciousSoftMode !== false;
 
   const sessions = await prisma.bIKSession.findMany({
@@ -262,6 +264,18 @@ export async function GET(request: Request) {
       : 0;
 
   const strictMetrics = await getBikStrictDayMetrics(siteId, dayDate);
+  const strictReceivedKey = `bik_strict:pv:${siteId}:${dayString}:received`;
+  const strictDedupedKey = `bik_strict:pv:${siteId}:${dayString}:deduped`;
+  const strictKeptKey = `bik_strict:pv:${siteId}:${dayString}:kept`;
+  const [strictReceivedRaw, strictDedupedRaw, strictKeptRaw] =
+    await Promise.all([
+      redis.get(strictReceivedKey),
+      redis.get(strictDedupedKey),
+      redis.get(strictKeptKey),
+    ]);
+  const strictReceived = Number(strictReceivedRaw ?? 0);
+  const strictDeduped = Number(strictDedupedRaw ?? 0);
+  const strictKept = Number(strictKeptRaw ?? 0);
 
   return NextResponse.json({
     date: dayString,
@@ -275,6 +289,9 @@ export async function GET(request: Request) {
     counted_pageviews: countedPageviews,
     counted_engagement_avg: countedEngagementAvg,
     ...strictMetrics,
+    strict_pageview_total_received: strictReceived,
+    strict_pageview_deduped_count: strictDeduped,
+    strict_pageview_kept: strictKept,
     invalid_sessions_count: invalidSessions.length,
     suspicious_sessions_count: suspiciousSessions.length,
     adblock_suspect_count: adblockSuspectCount,

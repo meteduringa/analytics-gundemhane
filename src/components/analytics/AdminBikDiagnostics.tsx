@@ -20,6 +20,9 @@ type DiagnosticsResponse = {
   daily_pageviews_strict: number;
   daily_sessions_strict: number;
   daily_avg_time_on_site_seconds_strict: number;
+  strict_pageview_total_received: number;
+  strict_pageview_deduped_count: number;
+  strict_pageview_kept: number;
   invalid_sessions_count: number;
   suspicious_sessions_count: number;
   adblock_suspect_count: number;
@@ -47,6 +50,11 @@ const AdminBikDiagnostics = ({ websites }: { websites: Website[] }) => {
   const networkErrorCount = useMemo(() => {
     if (!data?.error_codes) return 0;
     return Object.values(data.error_codes).reduce((sum, value) => sum + value, 0);
+  }, [data]);
+
+  const strictDedupeRate = useMemo(() => {
+    if (!data?.strict_pageview_total_received) return 0;
+    return data.strict_pageview_deduped_count / data.strict_pageview_total_received;
   }, [data]);
 
   const fetchDiagnostics = async () => {
@@ -232,6 +240,12 @@ const AdminBikDiagnostics = ({ websites }: { websites: Website[] }) => {
                   </span>
                 </div>
               </div>
+              {strictDedupeRate > 0.05 ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                  BIK_STRICT PV dedupe oranı %{Math.round(strictDedupeRate * 100)}.
+                  Entegrasyon kaynaklı tekrarlar olabilir.
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">

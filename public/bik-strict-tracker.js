@@ -14,6 +14,9 @@
     script.getAttribute("data-fingerprint-url") ||
     `${normalizedHost}/fingerprintjs/v3.4.1/fp.min.js`;
   const beaconStats = { success: 0, fail: 0 };
+  const DEDUPE_WINDOW_MS = 1500;
+  const HISTORY_DEBOUNCE_MS = 200;
+  const SAME_URL_COOLDOWN_MS = 10 * 1000;
 
   const logBeacon = (ok) => {
     if (ok) {
@@ -67,19 +70,71 @@
     }).catch(() => {});
   };
 
-  const trackPageview = async (isRouteChange) => {
+  const getNormalizedUrl = () => `${location.pathname}${location.search}`;
+
+  let lastSent = null;
+  let hasSentInitial = false;
+  let historyTimer = null;
+
+  const shouldDropDuplicate = (payload) => {
+    if (!lastSent) return false;
+    if (payload.visitorId !== lastSent.visitorId) return false;
+    if (payload.url !== lastSent.url) return false;
+    if (payload.referrer !== lastSent.referrer) return false;
+    return payload.ts - lastSent.ts <= DEDUPE_WINDOW_MS;
+  };
+
+  const trackPageview = async (reason) => {
     const visitorId = await getVisitorId();
     if (!visitorId) return;
+    const url = getNormalizedUrl();
+    const referrer = document.referrer || "";
+    const now = Date.now();
+    const payload = {
+      type: "bik_pageview",
+      website_id: siteId,
+      visitor_id: visitorId,
+      ts: now,
+      hostname: location.hostname,
+      url,
+      referrer,
+    };
+
+    if (reason === "spa" && !hasSentInitial) {
+      return;
+    }
+
+    if (reason === "load" && lastSent && lastSent.url === url) {
+      if (now - lastSent.ts <= DEDUPE_WINDOW_MS) {
+        hasSentInitial = true;
+        return;
+      }
+    }
+
+    if (reason === "spa" && lastSent && lastSent.url === url) {
+      if (now - lastSent.ts <= SAME_URL_COOLDOWN_MS) {
+        return;
+      }
+    }
+
+    if (shouldDropDuplicate(payload)) {
+      return;
+    }
+
+    lastSent = { visitorId, url, referrer, ts: now };
     sendRaw({
       type: "bik_pageview",
       website_id: siteId,
       visitor_id: visitorId,
-      ts: Date.now(),
+      ts: now,
       hostname: location.hostname,
-      url: `${location.pathname}${location.search}`,
-      referrer: document.referrer || "",
-      is_route_change: Boolean(isRouteChange),
+      url,
+      referrer,
+      is_route_change: reason === "spa",
     });
+    if (reason === "load") {
+      hasSentInitial = true;
+    }
   };
 
   let lastUrl = `${location.pathname}${location.search}`;
@@ -87,7 +142,13 @@
     const currentUrl = `${location.pathname}${location.search}`;
     if (currentUrl === lastUrl) return;
     lastUrl = currentUrl;
-    trackPageview(true);
+    if (historyTimer) {
+      clearTimeout(historyTimer);
+    }
+    historyTimer = setTimeout(() => {
+      trackPageview("spa");
+      historyTimer = null;
+    }, HISTORY_DEBOUNCE_MS);
   };
 
   const originalPushState = history.pushState;
@@ -106,12 +167,12 @@
   window.addEventListener("popstate", handleRouteChange);
 
   if (document.readyState === "complete") {
-    trackPageview(false);
+    trackPageview("load");
   } else {
     window.addEventListener(
       "load",
       () => {
-        trackPageview(false);
+        trackPageview("load");
       },
       { once: true }
     );

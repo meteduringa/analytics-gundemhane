@@ -1,6 +1,7 @@
   import { NextResponse } from "next/server";
   import { prisma } from "@/lib/prisma";
   import { getRedis } from "@/lib/redis";
+  import crypto from "crypto";
 
   export const runtime = "nodejs";
 
@@ -52,6 +53,25 @@
     typeof value === "string" ? value : value ? String(value) : null;
   const asStringAllowEmpty = (value: unknown) =>
     typeof value === "string" ? value : value === "" ? "" : value ? String(value) : null;
+  const normalizeStrictUrl = (value: string) => {
+    try {
+      const parsed = new URL(value, "https://example.com");
+      return `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return value.split("#")[0] ?? value;
+    }
+  };
+  const istanbulDayString = (date: Date) => {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    return formatter.format(date);
+  };
+  const hashKey = (value: string) =>
+    crypto.createHash("sha256").update(value).digest("hex");
 
   export async function OPTIONS(request: Request) {
     return new NextResponse(null, {
@@ -152,8 +172,40 @@
         ? JSON.parse(payload.event_data)
         : payload.event_data ?? undefined;
     const strictHostname = asString(payload.hostname);
+    const strictNormalizedUrl = isStrict ? normalizeStrictUrl(url) : url;
 
     const createdAt = new Date();
+    const redis = await getRedis();
+    const dayKey = istanbulDayString(createdAt);
+
+    if (isStrict) {
+      const strictReferrer = asStringAllowEmpty(payload.referrer) ?? "";
+      const dedupeKey = hashKey(
+        `${websiteId}:${visitorId}:${strictNormalizedUrl}:${strictReferrer}`
+      );
+      const dedupeRedisKey = `bik_strict:pv:dedupe:${dedupeKey}`;
+      const dedupe = await redis.set(dedupeRedisKey, "1", {
+        NX: true,
+        PX: 1500,
+      });
+      await redis.incr(`bik_strict:pv:${websiteId}:${dayKey}:received`);
+      await redis.expire(
+        `bik_strict:pv:${websiteId}:${dayKey}:received`,
+        60 * 60 * 48
+      );
+      if (!dedupe) {
+        await redis.incr(`bik_strict:pv:${websiteId}:${dayKey}:deduped`);
+        await redis.expire(
+          `bik_strict:pv:${websiteId}:${dayKey}:deduped`,
+          60 * 60 * 48
+        );
+        return NextResponse.json(
+          { ok: true },
+          { status: 200, headers: corsHeaders(origin) }
+        );
+      }
+    }
+
     const event = await prisma.analyticsEvent.create({
       data: {
         websiteId,
@@ -163,7 +215,7 @@
         eventData: isStrict ? { hostname: strictHostname ?? undefined } : eventData,
         visitorId,
         sessionId: isStrict ? visitorId : sessionId,
-        url,
+        url: strictNormalizedUrl,
         referrer: isStrict ? asStringAllowEmpty(payload.referrer) : asString(payload.referrer),
         screen: asString(payload.screen),
         language: asString(payload.language),
@@ -175,6 +227,14 @@
         createdAt,
       },
     });
+
+    if (isStrict) {
+      await redis.incr(`bik_strict:pv:${websiteId}:${dayKey}:kept`);
+      await redis.expire(
+        `bik_strict:pv:${websiteId}:${dayKey}:kept`,
+        60 * 60 * 48
+      );
+    }
 
     if (!isStrict) {
       await prisma.analyticsSession.upsert({
