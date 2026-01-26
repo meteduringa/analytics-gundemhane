@@ -175,7 +175,6 @@
     const strictNormalizedUrl = isStrict ? normalizeStrictUrl(url) : url;
 
     const createdAt = new Date();
-    const redis = await getRedis();
     const dayKey = istanbulDayString(createdAt);
 
     if (isStrict) {
