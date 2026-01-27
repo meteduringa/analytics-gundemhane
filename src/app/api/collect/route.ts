@@ -110,7 +110,7 @@
     const websiteId = String(payload.website_id ?? payload.website ?? "");
     const type = String(payload.type ?? "");
     const url = String(payload.url ?? "");
-    const visitorId = String(payload.visitor_id ?? "");
+    const visitorId = String(payload.visitor_id ?? payload.fingerprint ?? "");
     const sessionId = String(payload.session_id ?? "");
     const isStrict = type === "bik_pageview";
 

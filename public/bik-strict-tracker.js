@@ -71,6 +71,11 @@
   };
 
   const getNormalizedUrl = () => `${location.pathname}${location.search}`;
+  const getResolution = () => {
+    const width = Math.round(window.screen.width * (window.devicePixelRatio || 1));
+    const height = Math.round(window.screen.height * (window.devicePixelRatio || 1));
+    return `${width}x${height}`;
+  };
 
   let lastSent = null;
   let hasSentInitial = false;
@@ -88,7 +93,7 @@
     const visitorId = await getVisitorId();
     if (!visitorId) return;
     const url = getNormalizedUrl();
-    const referrer = document.referrer || "";
+    const referrer = reason === "spa" ? (lastSent?.url ?? "") : document.referrer || "";
     const now = Date.now();
     const payload = {
       type: "bik_pageview",
@@ -98,6 +103,8 @@
       hostname: location.hostname,
       url,
       referrer,
+      screen: getResolution(),
+      language: navigator.language || "",
     };
 
     if (reason === "spa" && !hasSentInitial) {
@@ -130,6 +137,8 @@
       hostname: location.hostname,
       url,
       referrer,
+      screen: payload.screen,
+      language: payload.language,
       is_route_change: reason === "spa",
     });
     if (reason === "load") {
