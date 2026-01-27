@@ -10,11 +10,21 @@ type StrictMetrics = {
   daily_avg_time_on_site_seconds_strict: number;
 };
 
+const istanbulDayString = (date: Date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
 export const getBikStrictDayMetrics = async (
   siteId: string,
   dayDate: Date
 ): Promise<StrictMetrics> => {
-  const { start, end } = getIstanbulDayRange(dayDate);
+  const { start, end, dayString } = getIstanbulDayRange(dayDate);
+  const todayString = istanbulDayString(new Date());
+  const isTodayInIstanbul = dayString === todayString;
   const config = await getBikConfig(siteId);
 
   const events = await prisma.analyticsEvent.findMany({
@@ -29,18 +39,40 @@ export const getBikStrictDayMetrics = async (
     },
     select: {
       visitorId: true,
+      url: true,
       referrer: true,
       createdAt: true,
     },
     orderBy: { createdAt: "asc" },
   });
 
-  const dailyPageviews = events.length;
+  // For today only, simulate the new strict dedupe guard prospectively at aggregation
+  // time to approximate "as if the fix existed since 00:00" without mutating history.
+  const DEDUPE_WINDOW_MS = 1500;
+  const dedupedEvents = !isTodayInIstanbul
+    ? events
+    : (() => {
+        const lastSeenByKey = new Map<string, number>();
+        const kept: typeof events = [];
+        for (const event of events) {
+          const key = `${event.visitorId}||${event.url ?? ""}||${event.referrer ?? ""}`;
+          const ts = event.createdAt.getTime();
+          const lastTs = lastSeenByKey.get(key);
+          if (lastTs && ts - lastTs <= DEDUPE_WINDOW_MS) {
+            continue;
+          }
+          lastSeenByKey.set(key, ts);
+          kept.push(event);
+        }
+        return kept;
+      })();
+
+  const dailyPageviews = dedupedEvents.length;
   const uniqueVisitors = new Set<string>();
   const firstReferrer = new Map<string, string | null>();
   const visitorEvents = new Map<string, Date[]>();
 
-  for (const event of events) {
+  for (const event of dedupedEvents) {
     uniqueVisitors.add(event.visitorId);
     if (!firstReferrer.has(event.visitorId)) {
       firstReferrer.set(event.visitorId, event.referrer ?? null);
