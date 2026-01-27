@@ -72,6 +72,18 @@
   };
   const hashKey = (value: string) =>
     crypto.createHash("sha256").update(value).digest("hex");
+  const computeStrictAuth = (fingerprint: string) => {
+    const keyCodes = "fpr".split("").map((ch) => ch.charCodeAt(0));
+    const toHexByte = (n: number) => `0${Number(n).toString(16)}`.slice(-2);
+    const xorWithKey = (seed: number) =>
+      keyCodes.reduce((acc, code) => acc ^ code, seed);
+    return fingerprint
+      .split("")
+      .map((ch) => ch.charCodeAt(0))
+      .map((code) => xorWithKey(code))
+      .map(toHexByte)
+      .join("");
+  };
 
   export async function OPTIONS(request: Request) {
     return new NextResponse(null, {
@@ -178,6 +190,14 @@
     const dayKey = istanbulDayString(createdAt);
 
     if (isStrict) {
+      const incomingAuth = asStringAllowEmpty(payload.auth) ?? "";
+      const expectedAuth = computeStrictAuth(visitorId);
+      if (!incomingAuth || incomingAuth !== expectedAuth) {
+        return NextResponse.json(
+          { ok: true },
+          { status: 200, headers: corsHeaders(origin) }
+        );
+      }
       const strictReferrer = asStringAllowEmpty(payload.referrer) ?? "";
       const dedupeKey = hashKey(
         `${websiteId}:${visitorId}:${strictNormalizedUrl}:${strictReferrer}`

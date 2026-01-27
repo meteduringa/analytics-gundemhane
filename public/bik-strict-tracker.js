@@ -18,6 +18,19 @@
   const HISTORY_DEBOUNCE_MS = 200;
   const SAME_URL_COOLDOWN_MS = 10 * 1000;
 
+  const computeAuth = (fingerprint) => {
+    const keyCodes = "fpr".split("").map((ch) => ch.charCodeAt(0));
+    const toHexByte = (n) => (`0${Number(n).toString(16)}`).slice(-2);
+    const xorWithKey = (seed) =>
+      keyCodes.reduce((acc, code) => acc ^ code, seed);
+    return fingerprint
+      .split("")
+      .map((ch) => ch.charCodeAt(0))
+      .map((code) => xorWithKey(code))
+      .map(toHexByte)
+      .join("");
+  };
+
   const logBeacon = (ok) => {
     if (ok) {
       beaconStats.success += 1;
@@ -95,6 +108,7 @@
     const url = getNormalizedUrl();
     const referrer = reason === "spa" ? (lastSent?.url ?? "") : document.referrer || "";
     const now = Date.now();
+    const auth = computeAuth(visitorId);
     const payload = {
       type: "bik_pageview",
       website_id: siteId,
@@ -103,6 +117,7 @@
       hostname: location.hostname,
       url,
       referrer,
+      auth,
       screen: getResolution(),
       language: navigator.language || "",
     };
@@ -137,6 +152,7 @@
       hostname: location.hostname,
       url,
       referrer,
+      auth,
       screen: payload.screen,
       language: payload.language,
       is_route_change: reason === "spa",
