@@ -17,6 +17,26 @@
   const DEDUPE_WINDOW_MS = 1500;
   const HISTORY_DEBOUNCE_MS = 200;
   const SAME_URL_COOLDOWN_MS = 10 * 1000;
+  const FALLBACK_VISITOR_KEY = "bik_strict_visitor_id";
+
+  const uuid = () =>
+    "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+      const rand = (Math.random() * 16) | 0;
+      const value = char === "x" ? rand : (rand & 0x3) | 0x8;
+      return value.toString(16);
+    });
+
+  const getFallbackVisitorId = () => {
+    try {
+      const stored = window.localStorage.getItem(FALLBACK_VISITOR_KEY);
+      if (stored) return stored;
+      const next = uuid();
+      window.localStorage.setItem(FALLBACK_VISITOR_KEY, next);
+      return next;
+    } catch {
+      return uuid();
+    }
+  };
 
   const computeAuth = (fingerprint) => {
     const keyCodes = "fpr".split("").map((ch) => ch.charCodeAt(0));
@@ -62,7 +82,7 @@
         .then((fp) => fp.load())
         .then((agent) => agent.get())
         .then((result) => result.visitorId)
-        .catch(() => null);
+        .catch(() => getFallbackVisitorId());
     }
     return visitorIdPromise;
   };
