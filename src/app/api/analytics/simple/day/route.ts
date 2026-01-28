@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseDayParam } from "@/lib/bik-time";
 import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
+import { getIstanbulDayRange } from "@/lib/bik-time";
 
 export const runtime = "nodejs";
 
@@ -15,13 +16,12 @@ export async function GET(request: Request) {
   }
 
   const dayDate = parseDayParam(dateParam) ?? new Date();
-  const computed = await computeSimpleDayMetrics(siteId, dayDate);
-
+  const { dayString, start } = getIstanbulDayRange(dayDate);
   const existing = await prisma.analyticsDailySimple.findUnique({
     where: {
       siteId_day: {
         siteId,
-        day: computed.dayStart,
+        day: start,
       },
     },
   });
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   if (existing) {
     return NextResponse.json({
       siteId,
-      day: computed.dayString,
+      day: dayString,
       daily_unique_users: existing.dailyUniqueUsers,
       daily_direct_unique_users: existing.dailyDirectUniqueUsers,
       daily_pageviews: existing.dailyPageviews,
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
     });
   }
 
+  const computed = await computeSimpleDayMetrics(siteId, dayDate);
   const saved = await prisma.analyticsDailySimple.upsert({
     where: {
       siteId_day: {
