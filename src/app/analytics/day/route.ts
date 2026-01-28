@@ -10,6 +10,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const siteId = searchParams.get("site_id");
   const dateParam = searchParams.get("date");
+  const hideShortReads = searchParams.get("hideShortReads") === "1";
 
   if (!siteId) {
     return NextResponse.json({ error: "site_id zorunludur." }, { status: 400 });
@@ -18,7 +19,10 @@ export async function GET(request: Request) {
   const dayDate = parseDayParam(dateParam) ?? new Date();
   const [metrics, strictMetrics] = await Promise.all([
     getBikDayMetrics(siteId, dayDate),
-    getBikStrictDayMetrics(siteId, dayDate),
+    getBikStrictDayMetrics(siteId, dayDate, {
+      hideShortReads,
+      countryCode: "TR",
+    }),
   ]);
 
   await prisma.bIKRollupDay.upsert({

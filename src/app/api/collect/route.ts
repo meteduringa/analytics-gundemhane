@@ -1,6 +1,7 @@
   import { NextResponse } from "next/server";
-  import { prisma } from "@/lib/prisma";
-  import { getRedis } from "@/lib/redis";
+import { prisma } from "@/lib/prisma";
+import { getRedis } from "@/lib/redis";
+import { getCountryCode } from "@/lib/bik-rules";
   import crypto from "crypto";
 
   export const runtime = "nodejs";
@@ -225,6 +226,7 @@
       }
     }
 
+    const countryCode = getCountryCode(request.headers);
     const event = await prisma.analyticsEvent.create({
       data: {
         websiteId,
@@ -242,6 +244,7 @@
           asString(payload["user-agent"]) ??
           asString(payload.userAgent) ??
           request.headers.get("user-agent"),
+        countryCode: countryCode ?? undefined,
         clientTimestamp,
         createdAt,
       },

@@ -86,13 +86,14 @@ model AnalyticsEvent {
   visitorId       String
   sessionId       String
     url             String
-    referrer        String?
-    screen          String?
-    language        String?
-    userAgent       String?
-    clientTimestamp DateTime?
-    createdAt       DateTime           @default(now())
-    website         AnalyticsWebsite   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  referrer        String?
+  screen          String?
+  language        String?
+  userAgent       String?
+  countryCode     String?
+  clientTimestamp DateTime?
+  createdAt       DateTime           @default(now())
+  website         AnalyticsWebsite   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
 
   @@index([websiteId, createdAt])
   @@index([websiteId, mode, createdAt])

@@ -52,6 +52,7 @@ const PanelPage = () => {
     daily_pageviews_strict: number;
     daily_sessions_strict: number;
     daily_avg_time_on_site_seconds_strict: number;
+    daily_total_time_on_site_seconds_strict: number;
   } | null>(null);
   const [bikRealtime, setBikRealtime] = useState<{
     live_visitors: number;
@@ -119,7 +120,11 @@ const PanelPage = () => {
       if (!selectedSiteId) return;
       const day = startDate;
       const [dayResponse, realtimeResponse] = await Promise.all([
-        fetch(`/analytics/day?site_id=${selectedSiteId}&date=${day}`),
+        fetch(
+          `/analytics/day?site_id=${selectedSiteId}&date=${day}&hideShortReads=${
+            hideShortReads ? "1" : "0"
+          }`
+        ),
         fetch(`/analytics/realtime?site_id=${selectedSiteId}`),
       ]);
       const dayPayload = await dayResponse.json();
@@ -132,7 +137,7 @@ const PanelPage = () => {
       }
     };
     loadBikMetrics();
-  }, [selectedSiteId, startDate]);
+  }, [hideShortReads, selectedSiteId, startDate]);
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
@@ -262,11 +267,11 @@ const PanelPage = () => {
               tone="bg-indigo-50"
             />
             <StatsCard
-              title="BIK Ortalama Süre"
+              title="BIK Toplam Süre"
               value={formatDuration(
-                bikMetrics?.daily_avg_time_on_site_seconds_strict ?? 0
+                bikMetrics?.daily_total_time_on_site_seconds_strict ?? 0
               )}
-              detail="Session ortalaması (strict)"
+              detail="Toplam okunma (strict)"
               accent="text-rose-600"
               tone="bg-rose-50"
             />
@@ -276,6 +281,15 @@ const PanelPage = () => {
               detail="Son 5 dakika"
               accent="text-slate-900"
               tone="bg-amber-50"
+            />
+            <StatsCard
+              title="BIK Ortalama Süre"
+              value={formatDuration(
+                bikMetrics?.daily_avg_time_on_site_seconds_strict ?? 0
+              )}
+              detail="Session ortalaması (strict)"
+              accent="text-cyan-700"
+              tone="bg-cyan-50"
             />
             <StatsCard
               title="BIK Direct Oran"
