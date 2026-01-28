@@ -21,7 +21,11 @@ type SimpleEvent = {
   url: string;
   referrer: string | null;
   createdAt: Date;
+  clientTimestamp: Date | null;
 };
+
+const resolveEventTimestamp = (event: SimpleEvent) =>
+  event.clientTimestamp ?? event.createdAt;
 
 const dedupeEvents = (events: SimpleEvent[]) => {
   const seen = new Map<string, number>();
@@ -30,7 +34,7 @@ const dedupeEvents = (events: SimpleEvent[]) => {
     const normalizedUrl = normalizeUrl(event.url);
     const referrer = event.referrer ?? "";
     const key = `${event.visitorId}||${normalizedUrl}||${referrer}`;
-    const ts = event.createdAt.getTime();
+    const ts = resolveEventTimestamp(event).getTime();
     const lastTs = seen.get(key);
     if (lastTs && ts - lastTs <= DEDUPE_WINDOW_MS) {
       continue;
@@ -78,19 +82,30 @@ const computeVisitorTime = (timestamps: Date[]) => {
 
 export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => {
   const { start, end, dayString } = getIstanbulDayRange(dayDate);
+  const isInDay = (event: SimpleEvent) => {
+    const ts = resolveEventTimestamp(event).getTime();
+    return ts >= start.getTime() && ts <= end.getTime();
+  };
+  const whereTimeRange = {
+    OR: [
+      { createdAt: { gte: start, lte: end } },
+      { clientTimestamp: { gte: start, lte: end } },
+    ],
+  };
 
   const strictEvents = await prisma.analyticsEvent.findMany({
     where: {
       websiteId: siteId,
       type: "PAGEVIEW",
       mode: "BIK_STRICT",
-      createdAt: { gte: start, lte: end },
+      ...whereTimeRange,
     },
     select: {
       visitorId: true,
       url: true,
       referrer: true,
       createdAt: true,
+      clientTimestamp: true,
     },
     orderBy: { createdAt: "asc" },
   });
@@ -102,18 +117,19 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
           websiteId: siteId,
           type: "PAGEVIEW",
           mode: "RAW",
-          createdAt: { gte: start, lte: end },
+          ...whereTimeRange,
         },
         select: {
           visitorId: true,
           url: true,
           referrer: true,
           createdAt: true,
+          clientTimestamp: true,
         },
         orderBy: { createdAt: "asc" },
       });
 
-  const deduped = dedupeEvents(eventsSource);
+  const deduped = dedupeEvents(eventsSource.filter(isInDay));
   const dailyPageviews = deduped.length;
 
   const visitorEvents = new Map<string, SimpleEvent[]>();
@@ -127,7 +143,9 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
   let directUnique = 0;
 
   for (const [visitorId, events] of visitorEvents.entries()) {
-    const sorted = [...events].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const sorted = [...events].sort(
+      (a, b) => resolveEventTimestamp(a).getTime() - resolveEventTimestamp(b).getTime()
+    );
     const first = sorted[0];
     if (first && first.referrer === "") {
       directUnique += 1;
@@ -136,7 +154,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
 
   let totalVisitorSeconds = 0;
   for (const events of visitorEvents.values()) {
-    const timestamps = events.map((event) => event.createdAt);
+    const timestamps = events.map((event) => resolveEventTimestamp(event));
     totalVisitorSeconds += computeVisitorTime(timestamps);
   }
 
