@@ -1,0 +1,156 @@
+import { prisma } from "@/lib/prisma";
+import { getIstanbulDayRange } from "@/lib/bik-time";
+
+const DEDUPE_WINDOW_MS = 1500;
+const SESSION_INACTIVITY_MINUTES = 35;
+const MAX_GAP_FOR_TIME_SECONDS = 1800;
+const LAST_PAGE_ESTIMATE_SECONDS = 30;
+
+const normalizeUrl = (value: string) => {
+  try {
+    const parsed = new URL(value, "https://example.com");
+    parsed.hash = "";
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return value.split("#")[0] ?? value;
+  }
+};
+
+type SimpleEvent = {
+  visitorId: string;
+  url: string;
+  referrer: string | null;
+  createdAt: Date;
+};
+
+const dedupeEvents = (events: SimpleEvent[]) => {
+  const seen = new Map<string, number>();
+  const deduped: SimpleEvent[] = [];
+  for (const event of events) {
+    const normalizedUrl = normalizeUrl(event.url);
+    const referrer = event.referrer ?? "";
+    const key = `${event.visitorId}||${normalizedUrl}||${referrer}`;
+    const ts = event.createdAt.getTime();
+    const lastTs = seen.get(key);
+    if (lastTs && ts - lastTs <= DEDUPE_WINDOW_MS) {
+      continue;
+    }
+    seen.set(key, ts);
+    deduped.push({ ...event, url: normalizedUrl, referrer });
+  }
+  return deduped;
+};
+
+const computeVisitorTime = (timestamps: Date[]) => {
+  if (!timestamps.length) return 0;
+  const sorted = [...timestamps].sort((a, b) => a.getTime() - b.getTime());
+  const sessionGapSeconds = SESSION_INACTIVITY_MINUTES * 60;
+
+  let totalSeconds = 0;
+  let sessionStartIndex = 0;
+
+  const flushSession = (startIndex: number, endIndex: number) => {
+    const count = endIndex - startIndex + 1;
+    if (count <= 1) {
+      return LAST_PAGE_ESTIMATE_SECONDS;
+    }
+    let duration = 0;
+    for (let i = startIndex; i < endIndex; i += 1) {
+      const deltaSeconds = (sorted[i + 1].getTime() - sorted[i].getTime()) / 1000;
+      if (deltaSeconds > 0) {
+        duration += Math.min(deltaSeconds, MAX_GAP_FOR_TIME_SECONDS);
+      }
+    }
+    return duration + LAST_PAGE_ESTIMATE_SECONDS;
+  };
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const gapSeconds = (sorted[i].getTime() - sorted[i - 1].getTime()) / 1000;
+    if (gapSeconds > sessionGapSeconds) {
+      totalSeconds += flushSession(sessionStartIndex, i - 1);
+      sessionStartIndex = i;
+    }
+  }
+
+  totalSeconds += flushSession(sessionStartIndex, sorted.length - 1);
+  return totalSeconds;
+};
+
+export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => {
+  const { start, end, dayString } = getIstanbulDayRange(dayDate);
+
+  const strictEvents = await prisma.analyticsEvent.findMany({
+    where: {
+      websiteId: siteId,
+      type: "PAGEVIEW",
+      mode: "BIK_STRICT",
+      createdAt: { gte: start, lte: end },
+    },
+    select: {
+      visitorId: true,
+      url: true,
+      referrer: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const eventsSource = strictEvents.length
+    ? strictEvents
+    : await prisma.analyticsEvent.findMany({
+        where: {
+          websiteId: siteId,
+          type: "PAGEVIEW",
+          mode: "RAW",
+          createdAt: { gte: start, lte: end },
+        },
+        select: {
+          visitorId: true,
+          url: true,
+          referrer: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+  const deduped = dedupeEvents(eventsSource);
+  const dailyPageviews = deduped.length;
+
+  const visitorEvents = new Map<string, SimpleEvent[]>();
+  for (const event of deduped) {
+    const list = visitorEvents.get(event.visitorId) ?? [];
+    list.push(event);
+    visitorEvents.set(event.visitorId, list);
+  }
+
+  const uniqueVisitors = new Set(visitorEvents.keys());
+  let directUnique = 0;
+
+  for (const [visitorId, events] of visitorEvents.entries()) {
+    const sorted = [...events].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const first = sorted[0];
+    if (first && first.referrer === "") {
+      directUnique += 1;
+    }
+  }
+
+  let totalVisitorSeconds = 0;
+  for (const events of visitorEvents.values()) {
+    const timestamps = events.map((event) => event.createdAt);
+    totalVisitorSeconds += computeVisitorTime(timestamps);
+  }
+
+  const uniqueCount = uniqueVisitors.size;
+  const avgTimePerUnique = uniqueCount > 0
+    ? Math.round(totalVisitorSeconds / uniqueCount)
+    : 0;
+
+  return {
+    dayString,
+    dayStart: new Date(`${dayString}T00:00:00+03:00`),
+    daily_unique_users: uniqueCount,
+    daily_direct_unique_users: directUnique,
+    daily_pageviews: dailyPageviews,
+    daily_avg_time_on_site_seconds_per_unique: avgTimePerUnique,
+  };
+};

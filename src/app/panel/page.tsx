@@ -13,14 +13,12 @@ const formatDateInput = (date: Date) => {
 
 const PanelPage = () => {
   const router = useRouter();
-  const [startDateInput, setStartDateInput] = useState(() =>
+  const [dateInput, setDateInput] = useState(() =>
     formatDateInput(new Date())
   );
-  const [endDateInput, setEndDateInput] = useState(formatDateInput(new Date()));
-  const [hideShortReadsInput, setHideShortReadsInput] = useState(true);
-  const [startDate, setStartDate] = useState(() => formatDateInput(new Date()));
-  const [endDate, setEndDate] = useState(formatDateInput(new Date()));
-  const [hideShortReads, setHideShortReads] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(() =>
+    formatDateInput(new Date())
+  );
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<{
     id: string;
@@ -33,30 +31,10 @@ const PanelPage = () => {
   >([]);
   const [selectedSiteId, setSelectedSiteId] = useState<string>("");
   const [metrics, setMetrics] = useState<{
-    totalPageviews: number;
-    totalDuration: number;
-    avgDuration: number;
-    dailyUniqueVisitors: number;
-    liveVisitors: number;
-  } | null>(null);
-  const [bikMetrics, setBikMetrics] = useState<{
-    daily_unique_visitors: number;
-    daily_direct_unique_visitors: number;
+    daily_unique_users: number;
+    daily_direct_unique_users: number;
     daily_pageviews: number;
-    daily_sessions: number;
-    daily_avg_time_on_site_seconds: number;
-    direct_ratio: number;
-    foreign_traffic_adjusted: number;
-    daily_unique_visitors_strict: number;
-    daily_direct_unique_visitors_strict: number;
-    daily_pageviews_strict: number;
-    daily_sessions_strict: number;
-    daily_avg_time_on_site_seconds_strict: number;
-    daily_total_time_on_site_seconds_strict: number;
-  } | null>(null);
-  const [bikRealtime, setBikRealtime] = useState<{
-    live_visitors: number;
-    live_pageviews: number;
+    daily_avg_time_on_site_seconds_per_unique: number;
   } | null>(null);
 
   useEffect(() => {
@@ -101,43 +79,19 @@ const PanelPage = () => {
     const loadMetrics = async () => {
       if (!selectedSiteId) return;
       const params = new URLSearchParams({
-        websiteId: selectedSiteId,
-        start: startDate,
-        end: endDate,
-        hideShortReads: hideShortReads ? "1" : "0",
+        siteId: selectedSiteId,
+        date: selectedDate,
       });
-      const response = await fetch(`/api/panel/metrics?${params.toString()}`);
+      const response = await fetch(
+        `/api/analytics/simple/day?${params.toString()}`
+      );
       const payload = await response.json();
       if (response.ok) {
         setMetrics(payload);
       }
     };
     loadMetrics();
-  }, [endDate, hideShortReads, selectedSiteId, startDate]);
-
-  useEffect(() => {
-    const loadBikMetrics = async () => {
-      if (!selectedSiteId) return;
-      const day = startDate;
-      const [dayResponse, realtimeResponse] = await Promise.all([
-        fetch(
-          `/analytics/day?site_id=${selectedSiteId}&date=${day}&hideShortReads=${
-            hideShortReads ? "1" : "0"
-          }`
-        ),
-        fetch(`/analytics/realtime?site_id=${selectedSiteId}`),
-      ]);
-      const dayPayload = await dayResponse.json();
-      const realtimePayload = await realtimeResponse.json();
-      if (dayResponse.ok) {
-        setBikMetrics(dayPayload);
-      }
-      if (realtimeResponse.ok) {
-        setBikRealtime(realtimePayload);
-      }
-    };
-    loadBikMetrics();
-  }, [hideShortReads, selectedSiteId, startDate]);
+  }, [selectedDate, selectedSiteId]);
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
@@ -186,135 +140,43 @@ const PanelPage = () => {
         </div>
 
         <FiltersBar
-          startValue={startDateInput}
-          endValue={endDateInput}
-          hideShortReads={hideShortReadsInput}
-          onStartChange={setStartDateInput}
-          onEndChange={setEndDateInput}
-          onToggleShortReads={setHideShortReadsInput}
-          onFilter={() => {
-            setStartDate(startDateInput);
-            setEndDate(endDateInput);
-            setHideShortReads(hideShortReadsInput);
-          }}
+          dateValue={dateInput}
+          onDateChange={setDateInput}
+          onFilter={() => setSelectedDate(dateInput)}
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard
-            title="Anlık Tekil Ziyaretçi"
-            value={`${metrics?.liveVisitors ?? 0}`}
-            detail="Son 5 dakika"
-            accent="text-indigo-700"
-            tone="bg-indigo-50"
-          />
-          <StatsCard
-            title="Günlük Tekil Ziyaretçi"
-            value={`${metrics?.dailyUniqueVisitors ?? 0}`}
-            detail="Bugün"
+            title="Günlük Tekil"
+            value={`${metrics?.daily_unique_users ?? 0}`}
+            detail="Seçilen gün"
             accent="text-emerald-700"
             tone="bg-emerald-50"
           />
           <StatsCard
-            title="Toplam Görüntülenme"
-            value={`${metrics?.totalPageviews ?? 0}`}
-            detail="Seçilen tarih aralığı"
-            accent="text-slate-900"
-            tone="bg-amber-50"
+            title="Günlük Direct"
+            value={`${metrics?.daily_direct_unique_users ?? 0}`}
+            detail="Referrer boş (direct)"
+            accent="text-cyan-700"
+            tone="bg-cyan-50"
           />
           <StatsCard
-            title="Okunma Süresi"
-            value={formatDuration(metrics?.avgDuration ?? 0)}
-            detail="Kişi başı ortalama"
+            title="Günlük Pageview"
+            value={`${metrics?.daily_pageviews ?? 0}`}
+            detail="Deduped görüntülenme"
+            accent="text-indigo-700"
+            tone="bg-indigo-50"
+          />
+          <StatsCard
+            title="Günlük Ortalama Süre"
+            value={formatDuration(
+              metrics?.daily_avg_time_on_site_seconds_per_unique ?? 0
+            )}
+            detail="Tekil başına ortalama"
             accent="text-rose-600"
             tone="bg-rose-50"
           />
         </div>
-
-        <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                BIK_STRICT
-              </p>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Resmiye Yakın Metrikler
-              </h2>
-            </div>
-            <span className="text-xs text-slate-400">
-              {startDate} günü için
-            </span>
-          </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatsCard
-              title="BIK Tekil"
-              value={`${bikMetrics?.daily_unique_visitors_strict ?? 0}`}
-              detail="Günlük tekil (strict)"
-              accent="text-slate-900"
-              tone="bg-slate-50"
-            />
-            <StatsCard
-              title="BIK Doğrudan"
-              value={`${bikMetrics?.daily_direct_unique_visitors_strict ?? 0}`}
-              detail="Günlük direct (strict)"
-              accent="text-emerald-700"
-              tone="bg-emerald-50"
-            />
-            <StatsCard
-              title="BIK Pageview"
-              value={`${bikMetrics?.daily_pageviews_strict ?? 0}`}
-              detail="Günlük görüntülenme (strict)"
-              accent="text-indigo-700"
-              tone="bg-indigo-50"
-            />
-            <StatsCard
-              title="BIK Toplam Süre"
-              value={formatDuration(
-                bikMetrics?.daily_total_time_on_site_seconds_strict ?? 0
-              )}
-              detail="Toplam okunma (strict)"
-              accent="text-rose-600"
-              tone="bg-rose-50"
-            />
-            <StatsCard
-              title="BIK Anlık Tekil"
-              value={`${bikRealtime?.live_visitors ?? 0}`}
-              detail="Son 5 dakika"
-              accent="text-slate-900"
-              tone="bg-amber-50"
-            />
-            <StatsCard
-              title="BIK Ortalama Süre"
-              value={formatDuration(
-                bikMetrics?.daily_avg_time_on_site_seconds_strict ?? 0
-              )}
-              detail="Session ortalaması (strict)"
-              accent="text-cyan-700"
-              tone="bg-cyan-50"
-            />
-            <StatsCard
-              title="BIK Direct Oran"
-              value={`${Math.round((bikMetrics?.direct_ratio ?? 0) * 100)}%`}
-              detail="Direct / Tekil (legacy)"
-              accent="text-cyan-700"
-              tone="bg-cyan-50"
-            />
-            <StatsCard
-              title="BIK Yurtdışı Ayarlı"
-              value={`${bikMetrics?.foreign_traffic_adjusted ?? 0}`}
-              detail="Legacy %10"
-              accent="text-slate-900"
-              tone="bg-slate-50"
-            />
-            <StatsCard
-              title="BIK Session"
-              value={`${bikMetrics?.daily_sessions_strict ?? 0}`}
-              detail="Günlük oturum (strict)"
-              accent="text-amber-700"
-              tone="bg-amber-50"
-            />
-          </div>
-        </div>
-
       </div>
     </DashboardLayout>
   );

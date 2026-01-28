@@ -61,6 +61,7 @@ model AnalyticsWebsite {
   bikRollupMinutes BIKRollupMinute[]
   bikRollupDays  BIKRollupDay[]
   bikCalibrationRuns BIKCalibrationRun[]
+  dailySimple    AnalyticsDailySimple[]
 
   @@map("analytics_websites")
 }
@@ -101,6 +102,23 @@ model AnalyticsEvent {
   @@index([websiteId, visitorId])
   @@index([websiteId, type, createdAt])
   @@map("analytics_events")
+}
+
+model AnalyticsDailySimple {
+  id                                   String   @id @default(uuid())
+  siteId                               String
+  day                                  DateTime
+  dailyUniqueUsers                     Int
+  dailyDirectUniqueUsers               Int
+  dailyPageviews                       Int
+  dailyAvgTimeOnSiteSecondsPerUnique   Int
+  createdAt                            DateTime @default(now())
+  updatedAt                            DateTime @updatedAt
+  website                              AnalyticsWebsite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, day])
+  @@index([siteId, day])
+  @@map("analytics_daily_simple")
 }
 
   model AnalyticsSession {
