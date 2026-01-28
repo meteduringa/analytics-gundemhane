@@ -9,6 +9,9 @@ const roleGate: Record<string, string[]> = {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/analytics/simple")) {
+    return NextResponse.next();
+  }
   const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
 
   const matchedPrefix = Object.keys(roleGate).find((prefix) =>
