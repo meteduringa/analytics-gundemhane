@@ -36,6 +36,29 @@ const PanelPage = () => {
     daily_pageviews: number;
     daily_avg_time_on_site_seconds_per_unique: number;
   } | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshMetrics = async (siteId: string, dateValue: string) => {
+    if (!siteId) return;
+    setIsRefreshing(true);
+    await fetch(`/api/analytics/simple/recompute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ siteId, date: dateValue }),
+    }).catch(() => null);
+    const params = new URLSearchParams({
+      siteId,
+      date: dateValue,
+    });
+    const response = await fetch(
+      `/api/analytics/simple/day?${params.toString()}`
+    );
+    const payload = await response.json();
+    if (response.ok) {
+      setMetrics(payload);
+    }
+    setIsRefreshing(false);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -76,21 +99,7 @@ const PanelPage = () => {
   }, [selectedSiteId, user]);
 
   useEffect(() => {
-    const loadMetrics = async () => {
-      if (!selectedSiteId) return;
-      const params = new URLSearchParams({
-        siteId: selectedSiteId,
-        date: selectedDate,
-      });
-      const response = await fetch(
-        `/api/analytics/simple/day?${params.toString()}`
-      );
-      const payload = await response.json();
-      if (response.ok) {
-        setMetrics(payload);
-      }
-    };
-    loadMetrics();
+    refreshMetrics(selectedSiteId, selectedDate);
   }, [selectedDate, selectedSiteId]);
 
   const selectedSite = useMemo(
@@ -143,7 +152,12 @@ const PanelPage = () => {
           dateValue={dateInput}
           onDateChange={setDateInput}
           onFilter={() => setSelectedDate(dateInput)}
+          onRefresh={() => refreshMetrics(selectedSiteId, selectedDate)}
         />
+
+        {isRefreshing && (
+          <p className="text-xs text-slate-400">Güncelleniyor...</p>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard

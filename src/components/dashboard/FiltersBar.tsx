@@ -6,12 +6,14 @@ type FiltersBarProps = {
   dateValue: string;
   onDateChange: (value: string) => void;
   onFilter: () => void;
+  onRefresh: () => void;
 };
 
 const FiltersBar = ({
   dateValue,
   onDateChange,
   onFilter,
+  onRefresh,
 }: FiltersBarProps) => {
   return (
     <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
@@ -34,6 +36,13 @@ const FiltersBar = ({
           className="rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-white shadow-md shadow-purple-500/30 transition hover:brightness-95"
         >
           Filtrele
+        </button>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+        >
+          Yenile
         </button>
         <button
           type="button"
