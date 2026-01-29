@@ -15,94 +15,183 @@
   const hostUrl =
     process.env.NEXT_PUBLIC_HOST_URL ?? "https://analytics.gundemhane.com";
 
-const externalSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/tracker.js"
-  data-website-id="${websiteId}"
-  data-host-url="${hostUrl}">
-</script>`;
-
-const bikSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/bik-tracker.js"
+const externalSnippetFor = (websiteId: string) => `<script defer src="${hostUrl}/simple-tracker.js"
   data-site-id="${websiteId}"
   data-host-url="${hostUrl}">
 </script>`;
 
-const bikStrictSnippetFor = (websiteId: string) => `<script async src="${hostUrl}/bik-strict-tracker.js"
-  data-site-id="${websiteId}"
-  data-host-url="${hostUrl}">
-</script>`;
-
-  const inlineSnippetFor = (websiteId: string) => `<script data-website-id="${websiteId}" data-host-url="${hostUrl}">
+  const inlineSnippetFor = (websiteId: string) => `<script data-site-id="${websiteId}" data-host-url="${hostUrl}">
   (function () {
     var s = document.currentScript;
     if (!s) return;
 
-    var websiteId = s.getAttribute("data-website-id");
+    var siteId = s.getAttribute("data-site-id") || s.getAttribute("data-website-id");
     var hostUrl = s.getAttribute("data-host-url") || "";
-    if (!websiteId || !hostUrl) return;
+    if (!siteId || !hostUrl) return;
 
     var endpoint = hostUrl.replace(/\\/$/, "") + "/api/collect";
-    var storage = localStorage;
-    var visitorKey = "gh_analytics_visitor_id";
-    var sessionKey = "gh_analytics_session_id";
-    var lastSeenKey = "gh_analytics_last_seen";
-    var sessionTimeout = 1800000;
+    var sessionCookie = "session_id";
+    var visitorCookie = "visitor_id";
+    var sessionTtlSeconds = 1800;
+    var visitorTtlSeconds = 31536000;
+    var pingStages = [1, 5, 10];
+    var pingIntervalSeconds = 10;
 
     function uuid() {
-      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
-        var r = (Math.random() * 16) | 0;
-        return (c === "x" ? r : (r & 3) | 8).toString(16);
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (ch) {
+        var rand = (Math.random() * 16) | 0;
+        var value = ch === "x" ? rand : (rand & 3) | 8;
+        return value.toString(16);
       });
     }
 
+    function getCookie(name) {
+      var match = document.cookie.split("; ").find(function (row) {
+        return row.indexOf(name + "=") === 0;
+      });
+      if (!match) return null;
+      return match.split("=")[1] || null;
+    }
+
+    function setCookie(name, value, maxAgeSeconds) {
+      document.cookie = name + "=" + value + "; Max-Age=" + maxAgeSeconds + "; Path=/; SameSite=Lax";
+    }
+
     function getVisitorId() {
-      var id = storage.getItem(visitorKey);
+      var id = getCookie(visitorCookie);
       if (!id) {
         id = uuid();
-        storage.setItem(visitorKey, id);
+        setCookie(visitorCookie, id, visitorTtlSeconds);
       }
       return id;
     }
 
     function getSessionId() {
-      var last = +storage.getItem(lastSeenKey) || 0;
-      var now = Date.now();
-      var id = storage.getItem(sessionKey);
-      if (!id || now - last > sessionTimeout) {
-        id = uuid();
-        storage.setItem(sessionKey, id);
+      var id = getCookie(sessionCookie);
+      if (!id) {
+        id = "session_" + uuid();
       }
-      storage.setItem(lastSeenKey, String(now));
+      setCookie(sessionCookie, id, sessionTtlSeconds);
       return id;
     }
 
-    function send(payload) {
-      payload.website_id = websiteId;
-      payload.visitor_id = getVisitorId();
-      payload.session_id = getSessionId();
-      payload.ts = Date.now();
-      payload.screen = screen.width + "x" + screen.height;
-      payload.language = navigator.language;
-      payload["user-agent"] = navigator.userAgent;
+    function getCountryHint() {
+      try {
+        var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        if (tz === "Europe/Istanbul") return "TR";
+      } catch (e) {}
+      var lang = (navigator.language || "").toLowerCase();
+      if (lang.indexOf("tr") === 0) return "TR";
+      return "";
+    }
+
+    function sendPayload(payload) {
+      var body = JSON.stringify({
+        website_id: siteId,
+        visitor_id: getVisitorId(),
+        session_id: getSessionId(),
+        ts: Date.now(),
+        screen: screen.width + "x" + screen.height,
+        language: navigator.language || "",
+        countryCode: getCountryHint(),
+        "user-agent": navigator.userAgent,
+        type: payload.type,
+        event_name: payload.event_name,
+        event_data: payload.event_data,
+        url: payload.url,
+        referrer: payload.referrer,
+      });
 
       if (navigator.sendBeacon) {
-        navigator.sendBeacon(endpoint, JSON.stringify(payload));
+        navigator.sendBeacon(endpoint, body);
       } else {
         fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: body,
           keepalive: true,
           credentials: "omit",
         }).catch(function () {});
       }
     }
 
-    function trackPageview() {
-      send({
-        type: "pageview",
+    var pingTimeouts = [];
+    var pingInterval = null;
+    var lastPageviewTs = null;
+    var lastUrl = location.pathname + location.search;
+
+    function clearPingTimers() {
+      pingTimeouts.forEach(function (timer) { clearTimeout(timer); });
+      pingTimeouts = [];
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+    }
+
+    function sendPing(elapsedSeconds) {
+      sendPayload({
+        type: "event",
+        event_name: "ping",
+        event_data: { pageviewTs: lastPageviewTs, elapsedSeconds: elapsedSeconds },
         url: location.pathname + location.search,
         referrer: document.referrer || null,
       });
     }
+
+    function schedulePings() {
+      clearPingTimers();
+      pingStages.forEach(function (seconds) {
+        var timer = setTimeout(function () { sendPing(seconds); }, seconds * 1000);
+        pingTimeouts.push(timer);
+      });
+      var startInterval = setTimeout(function () {
+        pingInterval = setInterval(function () {
+          if (!lastPageviewTs) return;
+          var elapsedSeconds = Math.floor((Date.now() - lastPageviewTs) / 1000);
+          sendPing(elapsedSeconds);
+        }, pingIntervalSeconds * 1000);
+      }, pingIntervalSeconds * 1000);
+      pingTimeouts.push(startInterval);
+    }
+
+    function trackPageview() {
+      lastPageviewTs = Date.now();
+      sendPayload({
+        type: "pageview",
+        url: location.pathname + location.search,
+        referrer: document.referrer || null,
+      });
+      schedulePings();
+    }
+
+    function handleRouteChange() {
+      var currentUrl = location.pathname + location.search;
+      if (currentUrl === lastUrl) return;
+      lastUrl = currentUrl;
+      clearPingTimers();
+      trackPageview();
+    }
+
+    var originalPushState = history.pushState;
+    var originalReplaceState = history.replaceState;
+
+    history.pushState = function () {
+      originalPushState.apply(this, arguments);
+      handleRouteChange();
+    };
+    history.replaceState = function () {
+      originalReplaceState.apply(this, arguments);
+      handleRouteChange();
+    };
+
+    addEventListener("popstate", handleRouteChange);
+    addEventListener("beforeunload", function () {
+      if (!lastPageviewTs) return;
+      var elapsedSeconds = Math.floor((Date.now() - lastPageviewTs) / 1000);
+      sendPing(Math.max(elapsedSeconds, 1));
+      clearPingTimers();
+    });
 
     if (document.readyState === "complete") {
       trackPageview();
@@ -112,19 +201,8 @@ const bikStrictSnippetFor = (websiteId: string) => `<script async src="${hostUrl
   })();
   </script>`;
 
-const snippetFor = (
-  websiteId: string,
-  mode: "external" | "inline",
-  kind: "standard" | "bik" | "bik_strict"
-) => {
-  if (kind === "bik") {
-    return bikSnippetFor(websiteId);
-  }
-  if (kind === "bik_strict") {
-    return bikStrictSnippetFor(websiteId);
-  }
-  return mode === "inline" ? inlineSnippetFor(websiteId) : externalSnippetFor(websiteId);
-};
+const snippetFor = (websiteId: string, mode: "external" | "inline") =>
+  mode === "inline" ? inlineSnippetFor(websiteId) : externalSnippetFor(websiteId);
 
   export default function AdminWebsites({
     initialWebsites,
@@ -143,9 +221,6 @@ const snippetFor = (
     const [newDomains, setNewDomains] = useState("");
     const [error, setError] = useState<string | null>(null);
   const [snippetMode, setSnippetMode] = useState<"external" | "inline">("external");
-  const [snippetKind, setSnippetKind] = useState<"standard" | "bik" | "bik_strict">(
-    "standard"
-  );
 
     const sortedWebsites = useMemo(
       () =>
@@ -237,9 +312,7 @@ const snippetFor = (
     };
 
   const copySnippet = async (websiteId: string) => {
-    await navigator.clipboard.writeText(
-      snippetFor(websiteId, snippetMode, snippetKind)
-    );
+    await navigator.clipboard.writeText(snippetFor(websiteId, snippetMode));
   };
 
     return (
@@ -255,39 +328,9 @@ const snippetFor = (
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
               Snippet türü
             </span>
-            <button
-              type="button"
-              onClick={() => setSnippetKind("standard")}
-              className={`rounded-full border px-3 py-1 transition ${
-                snippetKind === "standard"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-              }`}
-            >
-              Standart
-            </button>
-            <button
-              type="button"
-              onClick={() => setSnippetKind("bik")}
-              className={`rounded-full border px-3 py-1 transition ${
-                snippetKind === "bik"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-              }`}
-            >
-              BIK
-            </button>
-            <button
-              type="button"
-              onClick={() => setSnippetKind("bik_strict")}
-              className={`rounded-full border px-3 py-1 transition ${
-                snippetKind === "bik_strict"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-              }`}
-            >
-              BIK_STRICT
-            </button>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-medium text-slate-600">
+              Simple Tracker
+            </span>
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
               Snippet modu
             </span>
@@ -310,12 +353,6 @@ const snippetFor = (
                   ? "border-slate-900 bg-slate-900 text-white"
                   : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
               }`}
-              disabled={snippetKind !== "standard"}
-              title={
-                snippetKind !== "standard"
-                  ? "BIK ve BIK_STRICT için sadece external kullanılır."
-                  : undefined
-              }
             >
               Inline (CSP safe)
             </button>
@@ -374,7 +411,7 @@ const snippetFor = (
                 }
               />
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-mono text-slate-600">
-                {snippetFor(site.id, snippetMode, snippetKind)}
+                {snippetFor(site.id, snippetMode)}
               </div>
             </div>,
             <span
