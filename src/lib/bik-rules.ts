@@ -168,10 +168,16 @@ export const evaluateBotSignals = (input: {
 };
 
 export const getCountryCode = (headers: Headers) => {
-  return (
+  const headerCode =
     headers.get("cf-ipcountry") ||
     headers.get("x-vercel-ip-country") ||
-    headers.get("x-country-code") ||
-    null
-  );
+    headers.get("x-country-code");
+  return headerCode || null;
+};
+
+export const normalizeCountryCode = (value: string | null) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.toUpperCase();
 };

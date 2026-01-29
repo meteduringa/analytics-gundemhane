@@ -109,6 +109,15 @@
     const height = Math.round(window.screen.height * (window.devicePixelRatio || 1));
     return `${width}x${height}`;
   };
+  const getCountryHint = () => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      if (tz === "Europe/Istanbul") return "TR";
+    } catch {}
+    const lang = (navigator.language || "").toLowerCase();
+    if (lang.startsWith("tr")) return "TR";
+    return "";
+  };
 
   let lastSent = null;
   let hasSentInitial = false;
@@ -140,6 +149,7 @@
       auth,
       screen: getResolution(),
       language: navigator.language || "",
+      countryCode: getCountryHint(),
     };
 
     if (reason === "spa" && !hasSentInitial) {
@@ -175,6 +185,7 @@
       auth,
       screen: payload.screen,
       language: payload.language,
+      countryCode: payload.countryCode,
       is_route_change: reason === "spa",
     });
     if (reason === "load") {

@@ -1,7 +1,7 @@
   import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRedis } from "@/lib/redis";
-import { getCountryCode } from "@/lib/bik-rules";
+import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
   import crypto from "crypto";
 
   export const runtime = "nodejs";
@@ -30,12 +30,21 @@ import { getCountryCode } from "@/lib/bik-rules";
     }
   };
 
+  const normalizeIp = (value: string) => value.replace(/^\[|\]$/g, "");
+  const stripPort = (value: string) => value.replace(/:\d+$/, "");
   const getRequestIp = (request: Request) => {
     const forwardedFor = request.headers.get("x-forwarded-for");
     if (forwardedFor) {
-      return forwardedFor.split(",")[0]?.trim() ?? "unknown";
+      const raw = forwardedFor.split(",")[0]?.trim() ?? "";
+      const normalized = normalizeIp(raw);
+      return stripPort(normalized);
     }
-    return request.headers.get("x-real-ip") ?? "unknown";
+    const realIp = request.headers.get("x-real-ip");
+    if (realIp) {
+      const normalized = normalizeIp(realIp);
+      return stripPort(normalized);
+    }
+    return "unknown";
   };
 
   const parsePayload = async (request: Request) => {
@@ -206,7 +215,12 @@ import { getCountryCode } from "@/lib/bik-rules";
       }
     }
 
-    const countryCode = getCountryCode(request.headers);
+    const payloadCountry = normalizeCountryCode(
+      asStringAllowEmpty(payload.countryCode) ??
+        asStringAllowEmpty(payload.country) ??
+        asStringAllowEmpty(payload.cc)
+    );
+    const countryCode = getCountryCode(request.headers) ?? payloadCountry;
     const event = await prisma.analyticsEvent.create({
       data: {
         websiteId,

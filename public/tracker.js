@@ -12,6 +12,15 @@
     const sessionKey = "gh_analytics_session_id";
     const lastSeenKey = "gh_analytics_last_seen";
     const sessionTimeoutMs = 30 * 60 * 1000;
+    const getCountryHint = () => {
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        if (tz === "Europe/Istanbul") return "TR";
+      } catch {}
+      const lang = (navigator.language || "").toLowerCase();
+      if (lang.startsWith("tr")) return "TR";
+      return "";
+    };
 
     const uuid = () =>
       "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
@@ -48,6 +57,7 @@
       payload.ts = Date.now();
       payload.screen = `${window.screen.width}x${window.screen.height}`;
       payload.language = navigator.language;
+      payload.countryCode = getCountryHint();
       payload["user-agent"] = navigator.userAgent;
 
       navigator.sendBeacon?.(endpoint, JSON.stringify(payload)) ||
@@ -128,4 +138,3 @@
     }
   })();
   EOF
-
