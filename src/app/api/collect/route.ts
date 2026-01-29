@@ -122,7 +122,9 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
     const url = String(payload.url ?? "");
     const visitorId = String(payload.visitor_id ?? payload.fingerprint ?? "");
     const sessionId = String(payload.session_id ?? "");
-    const isStrict = type === "bik_pageview";
+    const isStrictPageview = type === "bik_pageview";
+    const isStrictPing = type === "bik_ping";
+    const isStrict = isStrictPageview || isStrictPing;
 
     if (!websiteId || !type || !url || !visitorId || (!isStrict && !sessionId)) {
       return NextResponse.json(
@@ -168,6 +170,8 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
         ? "EVENT"
         : type === "bik_pageview"
         ? "PAGEVIEW"
+        : type === "bik_ping"
+        ? "EVENT"
         : null;
 
     if (!eventType) {
@@ -187,7 +191,7 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
     const createdAt = new Date();
     const dayKey = istanbulDayString(createdAt);
 
-    if (isStrict) {
+    if (isStrictPageview) {
       const strictReferrer = asStringAllowEmpty(payload.referrer) ?? "";
       const dedupeKey = hashKey(
         `${websiteId}:${visitorId}:${strictNormalizedUrl}:${strictReferrer}`
@@ -221,13 +225,16 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
         asStringAllowEmpty(payload.cc)
     );
     const countryCode = getCountryCode(request.headers) ?? payloadCountry;
+    const fallbackEventName = isStrictPing ? "ping" : undefined;
     const event = await prisma.analyticsEvent.create({
       data: {
         websiteId,
         type: eventType,
         mode: isStrict ? "BIK_STRICT" : "RAW",
-        eventName: asString(payload.event_name),
-        eventData: isStrict ? { hostname: strictHostname ?? undefined } : eventData,
+        eventName: asString(payload.event_name) ?? fallbackEventName,
+        eventData: isStrictPageview
+          ? { hostname: strictHostname ?? undefined }
+          : eventData,
         visitorId,
         sessionId: isStrict ? visitorId : sessionId,
         url: strictNormalizedUrl,

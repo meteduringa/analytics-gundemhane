@@ -26,6 +26,13 @@ type SimpleEvent = {
   countryCode: string | null;
 };
 
+type PingEvent = {
+  visitorId: string;
+  createdAt: Date;
+  clientTimestamp: Date | null;
+  eventData: unknown;
+};
+
 const resolveEventTimestamp = (event: SimpleEvent) =>
   event.clientTimestamp ?? event.createdAt;
 
@@ -167,6 +174,64 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
       });
 
   const deduped = dedupeEvents(eventsSource.filter(isInDay));
+
+  const pingEventsSource = strictEvents.length
+    ? await prisma.analyticsEvent.findMany({
+        where: {
+          websiteId: siteId,
+          type: "EVENT",
+          mode: "BIK_STRICT",
+          eventName: "ping",
+          countryCode: "TR",
+          ...whereTimeRange,
+        },
+        select: {
+          visitorId: true,
+          createdAt: true,
+          clientTimestamp: true,
+          eventData: true,
+        },
+      })
+    : await prisma.analyticsEvent.findMany({
+        where: {
+          websiteId: siteId,
+          type: "EVENT",
+          mode: "RAW",
+          eventName: "ping",
+          countryCode: "TR",
+          ...whereTimeRange,
+        },
+        select: {
+          visitorId: true,
+          createdAt: true,
+          clientTimestamp: true,
+          eventData: true,
+        },
+      });
+
+  const pingEvents = pingEventsSource.filter((event) => {
+    const ts = resolveEventTimestamp(event as PingEvent).getTime();
+    return ts >= start.getTime() && ts <= end.getTime();
+  });
+
+  const pingMaxByVisitor = new Map<string, Map<number, number>>();
+  for (const ping of pingEvents) {
+    const data = ping.eventData as {
+      pageviewTs?: number;
+      elapsedSeconds?: number;
+    };
+    const pageviewTs = Number(data?.pageviewTs ?? NaN);
+    const elapsedSeconds = Number(data?.elapsedSeconds ?? NaN);
+    if (!Number.isFinite(pageviewTs) || !Number.isFinite(elapsedSeconds)) {
+      continue;
+    }
+    const visitorMap = pingMaxByVisitor.get(ping.visitorId) ?? new Map();
+    const currentMax = visitorMap.get(pageviewTs) ?? 0;
+    if (elapsedSeconds > currentMax) {
+      visitorMap.set(pageviewTs, elapsedSeconds);
+    }
+    pingMaxByVisitor.set(ping.visitorId, visitorMap);
+  }
   const dailyPageviews = deduped.length;
 
   const visitorEvents = new Map<string, SimpleEvent[]>();
@@ -186,13 +251,15 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
       (a, b) => resolveEventTimestamp(a).getTime() - resolveEventTimestamp(b).getTime()
     );
     const first = sorted[0];
-    const timestamps = events.map((event) => resolveEventTimestamp(event));
-    const observedSeconds = computeObservedSeconds(timestamps);
+    const visitorPingMap = pingMaxByVisitor.get(visitorId);
+    const observedSeconds = visitorPingMap
+      ? Array.from(visitorPingMap.values()).reduce((sum, value) => sum + value, 0)
+      : 0;
     if (observedSeconds < MIN_VISITOR_SECONDS) {
       continue;
     }
     uniqueVisitors.add(visitorId);
-    totalVisitorSeconds += computeVisitorTime(timestamps);
+    totalVisitorSeconds += observedSeconds;
     totalVisitorCounted += 1;
     if (first && first.referrer === "") {
       directUnique += 1;

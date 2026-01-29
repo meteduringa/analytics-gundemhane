@@ -122,6 +122,58 @@
   let lastSent = null;
   let hasSentInitial = false;
   let historyTimer = null;
+  let pingTimeouts = [];
+  let pingInterval = null;
+
+  const clearPingTimers = () => {
+    pingTimeouts.forEach((timer) => clearTimeout(timer));
+    pingTimeouts = [];
+    if (pingInterval) {
+      clearInterval(pingInterval);
+      pingInterval = null;
+    }
+  };
+
+  const sendPing = (context, elapsedSeconds) => {
+    sendRaw({
+      type: "bik_ping",
+      website_id: siteId,
+      visitor_id: context.visitorId,
+      ts: Date.now(),
+      hostname: location.hostname,
+      url: context.url,
+      referrer: "",
+      auth: context.auth,
+      screen: context.screen,
+      language: context.language,
+      countryCode: context.countryCode,
+      event_name: "ping",
+      event_data: {
+        pageviewTs: context.pageviewTs,
+        elapsedSeconds,
+      },
+    });
+  };
+
+  const schedulePings = (context) => {
+    clearPingTimers();
+    const stages = [1, 5, 10];
+    stages.forEach((seconds) => {
+      const timer = setTimeout(() => {
+        sendPing(context, seconds);
+      }, seconds * 1000);
+      pingTimeouts.push(timer);
+    });
+    const startInterval = setTimeout(() => {
+      pingInterval = setInterval(() => {
+        const elapsedSeconds = Math.floor(
+          (Date.now() - context.pageviewTs) / 1000
+        );
+        sendPing(context, elapsedSeconds);
+      }, 10 * 1000);
+    }, 10 * 1000);
+    pingTimeouts.push(startInterval);
+  };
 
   const shouldDropDuplicate = (payload) => {
     if (!lastSent) return false;
@@ -188,6 +240,15 @@
       countryCode: payload.countryCode,
       is_route_change: reason === "spa",
     });
+    schedulePings({
+      visitorId,
+      url,
+      auth,
+      pageviewTs: now,
+      screen: payload.screen,
+      language: payload.language,
+      countryCode: payload.countryCode,
+    });
     if (reason === "load") {
       hasSentInitial = true;
     }
@@ -198,6 +259,7 @@
     const currentUrl = `${location.pathname}${location.search}`;
     if (currentUrl === lastUrl) return;
     lastUrl = currentUrl;
+    clearPingTimers();
     if (historyTimer) {
       clearTimeout(historyTimer);
     }
@@ -221,6 +283,23 @@
   };
 
   window.addEventListener("popstate", handleRouteChange);
+  window.addEventListener("beforeunload", () => {
+    if (!lastSent) return;
+    const elapsedSeconds = Math.floor((Date.now() - lastSent.ts) / 1000);
+    sendPing(
+      {
+        visitorId: lastSent.visitorId,
+        url: lastSent.url,
+        auth: computeAuth(lastSent.visitorId),
+        pageviewTs: lastSent.ts,
+        screen: getResolution(),
+        language: navigator.language || "",
+        countryCode: getCountryHint(),
+      },
+      Math.max(elapsedSeconds, 1)
+    );
+    clearPingTimers();
+  });
 
   if (document.readyState === "complete") {
     trackPageview("load");

@@ -21,6 +21,52 @@
       if (lang.startsWith("tr")) return "TR";
       return "";
     };
+    let pingTimeouts = [];
+    let pingInterval = null;
+    let lastPageviewTs = null;
+
+    const clearPingTimers = () => {
+      pingTimeouts.forEach((timer) => clearTimeout(timer));
+      pingTimeouts = [];
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+    };
+
+    const sendPing = (elapsedSeconds) => {
+      sendPayload({
+        type: "event",
+        event_name: "ping",
+        event_data: {
+          pageviewTs: lastPageviewTs,
+          elapsedSeconds,
+        },
+        url: `${location.pathname}${location.search}`,
+        referrer: document.referrer || null,
+      });
+    };
+
+    const schedulePings = () => {
+      clearPingTimers();
+      const stages = [1, 5, 10];
+      stages.forEach((seconds) => {
+        const timer = setTimeout(() => {
+          sendPing(seconds);
+        }, seconds * 1000);
+        pingTimeouts.push(timer);
+      });
+      const startInterval = setTimeout(() => {
+        pingInterval = setInterval(() => {
+          if (!lastPageviewTs) return;
+          const elapsedSeconds = Math.floor(
+            (Date.now() - lastPageviewTs) / 1000
+          );
+          sendPing(elapsedSeconds);
+        }, 10 * 1000);
+      }, 10 * 1000);
+      pingTimeouts.push(startInterval);
+    };
 
     const uuid = () =>
       "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
@@ -71,11 +117,13 @@
     };
 
     const trackPageview = () => {
+      lastPageviewTs = Date.now();
       sendPayload({
         type: "pageview",
         url: `${location.pathname}${location.search}`,
         referrer: document.referrer || null,
       });
+      schedulePings();
     };
 
     const trackEvent = (name, data) => {
@@ -96,6 +144,7 @@
       const currentUrl = `${location.pathname}${location.search}`;
       if (currentUrl === lastUrl) return;
       lastUrl = currentUrl;
+      clearPingTimers();
       trackPageview();
     };
 
@@ -113,6 +162,14 @@
     };
 
     window.addEventListener("popstate", handleRouteChange);
+    window.addEventListener("beforeunload", () => {
+      if (!lastPageviewTs) return;
+      const elapsedSeconds = Math.floor(
+        (Date.now() - lastPageviewTs) / 1000
+      );
+      sendPing(Math.max(elapsedSeconds, 1));
+      clearPingTimers();
+    });
 
     document.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
