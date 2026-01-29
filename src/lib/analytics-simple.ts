@@ -210,7 +210,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
       });
 
   const pingEvents = pingEventsSource.filter((event) => {
-    const ts = resolveEventTimestamp(event as PingEvent).getTime();
+    const ts = (event.clientTimestamp ?? event.createdAt).getTime();
     return ts >= start.getTime() && ts <= end.getTime();
   });
 
