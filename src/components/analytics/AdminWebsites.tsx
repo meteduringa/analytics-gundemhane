@@ -15,7 +15,7 @@
   const hostUrl =
     process.env.NEXT_PUBLIC_HOST_URL ?? "https://analytics.gundemhane.com";
 
-const externalSnippetFor = (websiteId: string) => `<script defer src="${hostUrl}/simple-tracker.js"
+const externalSnippetFor = (websiteId: string) => `<script async fetchpriority="low" src="${hostUrl}/simple-tracker.js"
   data-site-id="${websiteId}"
   data-host-url="${hostUrl}">
 </script>`;
@@ -86,6 +86,7 @@ const externalSnippetFor = (websiteId: string) => `<script defer src="${hostUrl}
     }
 
     function sendPayload(payload) {
+      if (navigator.onLine === false) return;
       var body = JSON.stringify({
         website_id: siteId,
         visitor_id: getVisitorId(),
@@ -102,9 +103,14 @@ const externalSnippetFor = (websiteId: string) => `<script defer src="${hostUrl}
         referrer: payload.referrer,
       });
 
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(endpoint, body);
-      } else {
+      var sent = false;
+      try {
+        if (navigator.sendBeacon) {
+          sent = navigator.sendBeacon(endpoint, body);
+        }
+      } catch (e) {}
+      if (sent) return;
+      if (typeof AbortController === "undefined") {
         fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -112,7 +118,20 @@ const externalSnippetFor = (websiteId: string) => `<script defer src="${hostUrl}
           keepalive: true,
           credentials: "omit",
         }).catch(function () {});
+        return;
       }
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, 3000);
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body,
+        keepalive: true,
+        credentials: "omit",
+        signal: controller.signal,
+      })
+        .catch(function () {})
+        .finally(function () { clearTimeout(timeoutId); });
     }
 
     var pingTimeouts = [];

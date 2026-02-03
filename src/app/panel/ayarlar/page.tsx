@@ -8,7 +8,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 const hostUrl =
   process.env.NEXT_PUBLIC_HOST_URL ?? "https://analytics.gundemhane.com";
 
-const buildExternalSnippet = (websiteId: string) => `<script defer src="${hostUrl}/simple-tracker.js"
+const buildExternalSnippet = (websiteId: string) => `<script async fetchpriority="low" src="${hostUrl}/simple-tracker.js"
   data-site-id="${websiteId}"
   data-host-url="${hostUrl}">
 </script>`;
@@ -79,6 +79,7 @@ const buildInlineSnippet = (websiteId: string) => `<script data-site-id="${websi
   }
 
   function sendPayload(payload) {
+    if (navigator.onLine === false) return;
     var body = JSON.stringify({
       website_id: siteId,
       visitor_id: getVisitorId(),
@@ -95,9 +96,14 @@ const buildInlineSnippet = (websiteId: string) => `<script data-site-id="${websi
       referrer: payload.referrer,
     });
 
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(endpoint, body);
-    } else {
+    var sent = false;
+    try {
+      if (navigator.sendBeacon) {
+        sent = navigator.sendBeacon(endpoint, body);
+      }
+    } catch (e) {}
+    if (sent) return;
+    if (typeof AbortController === "undefined") {
       fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -105,7 +111,20 @@ const buildInlineSnippet = (websiteId: string) => `<script data-site-id="${websi
         keepalive: true,
         credentials: "omit",
       }).catch(function () {});
+      return;
     }
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, 3000);
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body,
+      keepalive: true,
+      credentials: "omit",
+      signal: controller.signal,
+    })
+      .catch(function () {})
+      .finally(function () { clearTimeout(timeoutId); });
   }
 
   var pingTimeouts = [];

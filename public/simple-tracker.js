@@ -15,6 +15,7 @@
   const visitorTtlSeconds = 365 * 24 * 60 * 60;
   const pingStages = [1, 5, 10];
   const pingIntervalSeconds = 10;
+  const requestTimeoutMs = 3000;
 
   const uuid = () =>
     "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
@@ -64,6 +65,7 @@
   };
 
   const sendPayload = (payload) => {
+    if (navigator.onLine === false) return;
     const body = JSON.stringify({
       ...payload,
       website_id: siteId,
@@ -76,15 +78,33 @@
       "user-agent": navigator.userAgent,
     });
 
-    const sent = navigator.sendBeacon?.(endpoint, body);
+    let sent = false;
+    try {
+      sent = navigator.sendBeacon?.(endpoint, body) ?? false;
+    } catch {}
     if (sent) return;
+    if (typeof AbortController === "undefined") {
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+        credentials: "omit",
+      }).catch(() => {});
+      return;
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
     fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
       keepalive: true,
       credentials: "omit",
-    }).catch(() => {});
+      signal: controller.signal,
+    })
+      .catch(() => {})
+      .finally(() => clearTimeout(timeoutId));
   };
 
   let pingTimeouts = [];
