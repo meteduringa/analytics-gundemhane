@@ -102,8 +102,8 @@ export async function GET(request: Request) {
   const rows = (await prisma.$queryRaw`
     WITH matched AS (
       SELECT DISTINCT
-        e."sessionId",
-        e."visitorId",
+        e."sessionId" AS "sessionId",
+        e."visitorId" AS "visitorId",
         (e."eventData"->>'source_website_id') AS source_website_id
       FROM "analytics_events" e
       WHERE ${whereClause}
@@ -111,8 +111,8 @@ export async function GET(request: Request) {
     durations AS (
       SELECT
         m.source_website_id,
-        m.sessionId,
-        m.visitorId,
+        m."sessionId" AS "sessionId",
+        m."visitorId" AS "visitorId",
         GREATEST(
           0,
           EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
