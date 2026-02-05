@@ -126,8 +126,8 @@ export async function GET(request: Request) {
       source_website_id,
       SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS short_sessions,
       SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions,
-      COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN visitorId END) AS short_visitors,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 1 THEN visitorId END) AS long_visitors
+      COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS short_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 1 THEN "visitorId" END) AS long_visitors
     FROM durations
     GROUP BY source_website_id
     ORDER BY long_sessions DESC
