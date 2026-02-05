@@ -48,6 +48,8 @@ model AnalyticsWebsite {
   id             String                 @id @default(uuid())
   name           String
   allowedDomains String[]
+  whitelistWebsiteIds String[]           @default([])
+  blacklistWebsiteIds String[]           @default([])
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
   userWebsites   AnalyticsUserWebsite[]

@@ -9,6 +9,7 @@ const menuItems = [
   { label: "Anasayfa", href: "/panel" },
   { label: "Ziyaretçi (Anlık)", href: "/panel" },
   { label: "Ziyaretçi (Günlük)", href: "/panel" },
+  { label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
   { label: "Ayarlar", href: "/panel/ayarlar" },
 ];
 

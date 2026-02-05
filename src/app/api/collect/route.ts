@@ -71,6 +71,21 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       return value.split("#")[0] ?? value;
     }
   };
+  const extractSourceWebsiteId = (value: string) => {
+    if (!value) return null;
+    try {
+      const parsed = new URL(value, "https://example.com");
+      return (
+        parsed.searchParams.get("website_id") ||
+        parsed.searchParams.get("site_id") ||
+        null
+      );
+    } catch {
+      return null;
+    }
+  };
+  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value) && typeof value === "object" && !Array.isArray(value);
   const istanbulDayString = (date: Date) => {
     const formatter = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Europe/Istanbul",
@@ -144,6 +159,36 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       );
     }
 
+    const sourceWebsiteId =
+      extractSourceWebsiteId(url) ??
+      asString(payload.source_website_id) ??
+      asString(payload.sourceWebsiteId) ??
+      null;
+
+    if (website.blacklistWebsiteIds?.length && sourceWebsiteId) {
+      if (website.blacklistWebsiteIds.includes(sourceWebsiteId)) {
+        return NextResponse.json(
+          { error: "Source blocked." },
+          { status: 403, headers: corsHeaders(origin) }
+        );
+      }
+    }
+
+    if (website.whitelistWebsiteIds?.length) {
+      if (!sourceWebsiteId) {
+        return NextResponse.json(
+          { error: "Source not allowed." },
+          { status: 403, headers: corsHeaders(origin) }
+        );
+      }
+      if (!website.whitelistWebsiteIds.includes(sourceWebsiteId)) {
+        return NextResponse.json(
+          { error: "Source not allowed." },
+          { status: 403, headers: corsHeaders(origin) }
+        );
+      }
+    }
+
     const originHost =
       extractHostname(origin) ?? extractHostname(request.headers.get("referer"));
 
@@ -185,6 +230,11 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       typeof payload.event_data === "string"
         ? JSON.parse(payload.event_data)
         : payload.event_data ?? undefined;
+    const enrichedEventData = sourceWebsiteId
+      ? isPlainObject(eventData)
+        ? { ...eventData, source_website_id: sourceWebsiteId }
+        : { source_website_id: sourceWebsiteId }
+      : eventData;
     const strictHostname = asString(payload.hostname);
     const strictNormalizedUrl = isStrict ? normalizeStrictUrl(url) : url;
 
@@ -233,8 +283,11 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
         mode: isStrict ? "BIK_STRICT" : "RAW",
         eventName: asString(payload.event_name) ?? fallbackEventName,
         eventData: isStrictPageview
-          ? { hostname: strictHostname ?? undefined }
-          : eventData,
+          ? {
+              hostname: strictHostname ?? undefined,
+              ...(sourceWebsiteId ? { source_website_id: sourceWebsiteId } : {}),
+            }
+          : enrichedEventData,
         visitorId,
         sessionId: isStrict ? visitorId : sessionId,
         url: strictNormalizedUrl,
