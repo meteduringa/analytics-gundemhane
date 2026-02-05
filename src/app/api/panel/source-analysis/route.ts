@@ -118,10 +118,14 @@ export async function GET(request: Request) {
   ];
 
   if (startTs) {
-    conditions.push(Prisma.sql`${createdAtLocal} >= ${startTs}`);
+    conditions.push(
+      Prisma.sql`${createdAtLocal} >= to_timestamp(${startTs}, 'YYYY-MM-DD HH24:MI:SS')`
+    );
   }
   if (endTs) {
-    conditions.push(Prisma.sql`${createdAtLocal} <= ${endTs}`);
+    conditions.push(
+      Prisma.sql`${createdAtLocal} <= to_timestamp(${endTs}, 'YYYY-MM-DD HH24:MI:SS')`
+    );
   }
   if (landingUrl) {
     conditions.push(Prisma.sql`e."url" = ${landingUrl}`);
