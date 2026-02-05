@@ -231,17 +231,7 @@ const SettingsPage = () => {
   const [snippet, setSnippet] = useState("");
   const [inlineSnippet, setInlineSnippet] = useState("");
   const [sites, setSites] = useState<
-    {
-      id: string;
-      name: string;
-      allowedDomains: string[];
-      whitelistWebsiteIds?: string[];
-      blacklistWebsiteIds?: string[];
-      whitelistInput?: string;
-      blacklistInput?: string;
-      savingLists?: boolean;
-      listsError?: string;
-    }[]
+    { id: string; name: string; allowedDomains: string[] }[]
   >([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [createdUser, setCreatedUser] = useState<{
@@ -279,14 +269,7 @@ const SettingsPage = () => {
         const response = await fetch(`/api/panel/sites?${params.toString()}`);
         const payload = await response.json();
         if (response.ok) {
-          const decorated = (payload.sites ?? []).map((site: any) => ({
-            ...site,
-            whitelistInput: (site.whitelistWebsiteIds ?? []).join(", "),
-            blacklistInput: (site.blacklistWebsiteIds ?? []).join(", "),
-            savingLists: false,
-            listsError: "",
-          }));
-          setSites(decorated);
+          setSites(payload.sites ?? []);
         }
       } finally {
         setSitesLoading(false);
@@ -347,16 +330,7 @@ const SettingsPage = () => {
       const inline = buildInlineSnippet(websiteId);
       setSnippet(external);
       setInlineSnippet(inline);
-      setSites((prev) => [
-        {
-          ...payload.website,
-          whitelistInput: (payload.website.whitelistWebsiteIds ?? []).join(", "),
-          blacklistInput: (payload.website.blacklistWebsiteIds ?? []).join(", "),
-          savingLists: false,
-          listsError: "",
-        },
-        ...prev,
-      ]);
+      setSites((prev) => [payload.website, ...prev]);
       if (payload.user?.email) {
         setCreatedUser({ email: payload.user.email, password: userPassword });
       }
@@ -385,66 +359,6 @@ const SettingsPage = () => {
     }
   };
 
-  const handleSaveLists = async (siteId: string) => {
-    if (!user) return;
-    setSites((prev) =>
-      prev.map((site) =>
-        site.id === siteId
-          ? { ...site, savingLists: true, listsError: "" }
-          : site
-      )
-    );
-    const site = sites.find((item) => item.id === siteId);
-    if (!site) return;
-    try {
-      const response = await fetch("/api/panel/sites", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorRole: user.role,
-          websiteId: siteId,
-          whitelistWebsiteIds: site.whitelistInput ?? "",
-          blacklistWebsiteIds: site.blacklistInput ?? "",
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Liste güncellenemedi.");
-      }
-      setSites((prev) =>
-        prev.map((item) =>
-          item.id === siteId
-            ? {
-                ...item,
-                whitelistWebsiteIds: payload.website.whitelistWebsiteIds ?? [],
-                blacklistWebsiteIds: payload.website.blacklistWebsiteIds ?? [],
-                whitelistInput: (payload.website.whitelistWebsiteIds ?? []).join(
-                  ", "
-                ),
-                blacklistInput: (payload.website.blacklistWebsiteIds ?? []).join(
-                  ", "
-                ),
-                savingLists: false,
-                listsError: "",
-              }
-            : item
-        )
-      );
-    } catch (err) {
-      setSites((prev) =>
-        prev.map((item) =>
-          item.id === siteId
-            ? {
-                ...item,
-                savingLists: false,
-                listsError:
-                  err instanceof Error ? err.message : "Liste güncellenemedi.",
-              }
-            : item
-        )
-      );
-    }
-  };
 
   return (
     <DashboardLayout>
@@ -622,25 +536,6 @@ const SettingsPage = () => {
             </span>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-            <p className="font-semibold text-slate-700">
-              Trafik Kaynağı Filtreleme (Popcent)
-            </p>
-            <p className="mt-1">
-              Belirli web sitelerden trafik almak istiyorsanız, site kimliklerini
-              (website_id) &quot;Beyaz Liste&quot; alanına girin. Boş bırakırsanız
-              tüm sitelerden trafik alırsınız.
-            </p>
-            <p className="mt-1">
-              Engellemek istediğiniz web siteler varsa &quot;Kara Liste&quot;
-              kısmına alınız. Birden fazla web site eklemek için (,) ile ayırınız.
-            </p>
-            <p className="mt-1">
-              Bu kısım profesyonel reklamcılar içindir, bilginiz yoksa boş
-              bırakabilirsiniz.
-            </p>
-          </div>
-
           <div className="mt-4 space-y-3">
             {sites.length === 0 && !sitesLoading && (
               <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 text-sm text-slate-500">
@@ -690,61 +585,6 @@ const SettingsPage = () => {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 text-xs text-slate-600 lg:grid-cols-2">
-                  <label className="flex flex-col gap-2">
-                    <span className="font-semibold text-slate-700">
-                      Beyaz Liste (website_id)
-                    </span>
-                    <input
-                      value={site.whitelistInput ?? ""}
-                      onChange={(event) =>
-                        setSites((prev) =>
-                          prev.map((item) =>
-                            item.id === site.id
-                              ? { ...item, whitelistInput: event.target.value }
-                              : item
-                          )
-                        )
-                      }
-                      placeholder="Örn: 123, 456, 789"
-                      className="rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-800 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-2">
-                    <span className="font-semibold text-slate-700">
-                      Kara Liste (website_id)
-                    </span>
-                    <input
-                      value={site.blacklistInput ?? ""}
-                      onChange={(event) =>
-                        setSites((prev) =>
-                          prev.map((item) =>
-                            item.id === site.id
-                              ? { ...item, blacklistInput: event.target.value }
-                              : item
-                          )
-                        )
-                      }
-                      placeholder="Örn: 111, 222"
-                      className="rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-800 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                    />
-                  </label>
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => handleSaveLists(site.id)}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600 transition hover:bg-slate-50"
-                    disabled={site.savingLists}
-                  >
-                    {site.savingLists ? "Kaydediliyor..." : "Kaydet"}
-                  </button>
-                  {site.listsError && (
-                    <span className="text-rose-600">{site.listsError}</span>
-                  )}
-                </div>
               </div>
             ))}
           </div>

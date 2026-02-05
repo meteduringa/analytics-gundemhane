@@ -20,10 +20,10 @@ const normalizeLandingUrl = (value: string | null) => {
 
 type SourceRow = {
   source_website_id: string;
-  sessions: bigint;
-  visitors: bigint;
-  avg_seconds: number | null;
-  total_seconds: number | null;
+  short_sessions: bigint;
+  long_sessions: bigint;
+  short_visitors: bigint;
+  long_visitors: bigint;
 };
 
 export async function GET(request: Request) {
@@ -32,10 +32,6 @@ export async function GET(request: Request) {
   const startValue = searchParams.get("start");
   const endValue = searchParams.get("end");
   const landingUrlRaw = searchParams.get("landingUrl");
-  const minAvgSeconds = Math.max(
-    0,
-    Number(searchParams.get("minAvgSeconds") ?? 1)
-  );
 
   if (!websiteId) {
     return NextResponse.json(
@@ -69,30 +65,47 @@ export async function GET(request: Request) {
   const whereClause = Prisma.join(conditions, " AND ");
 
   const rows = (await prisma.$queryRaw`
+    WITH matched AS (
+      SELECT DISTINCT
+        e."sessionId",
+        e."visitorId",
+        (e."eventData"->>'source_website_id') AS source_website_id
+      FROM "analytics_events" e
+      WHERE ${whereClause}
+    ),
+    durations AS (
+      SELECT
+        m.source_website_id,
+        m.sessionId,
+        m.visitorId,
+        GREATEST(
+          0,
+          EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
+        ) AS duration_seconds
+      FROM matched m
+      JOIN "analytics_sessions" s
+        ON s."websiteId" = ${websiteId}
+       AND s."sessionId" = m."sessionId"
+    )
     SELECT
-      (e."eventData"->>'source_website_id') AS source_website_id,
-      COUNT(DISTINCT s."sessionId") AS sessions,
-      COUNT(DISTINCT s."visitorId") AS visitors,
-      AVG(EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))) AS avg_seconds,
-      SUM(EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))) AS total_seconds
-    FROM "analytics_events" e
-    JOIN "analytics_sessions" s
-      ON s."websiteId" = e."websiteId"
-     AND s."sessionId" = e."sessionId"
-    WHERE ${whereClause}
+      source_website_id,
+      SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS short_sessions,
+      SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions,
+      COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN visitorId END) AS short_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 1 THEN visitorId END) AS long_visitors
+    FROM durations
     GROUP BY source_website_id
-    HAVING AVG(EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))) >= ${minAvgSeconds}
-    ORDER BY avg_seconds DESC
+    ORDER BY long_sessions DESC
     LIMIT 200
   `) as SourceRow[];
 
   return NextResponse.json({
     sources: rows.map((row) => ({
       sourceWebsiteId: row.source_website_id,
-      sessions: Number(row.sessions ?? 0),
-      visitors: Number(row.visitors ?? 0),
-      avgSeconds: Math.round(row.avg_seconds ?? 0),
-      totalSeconds: Math.round(row.total_seconds ?? 0),
+      shortSessions: Number(row.short_sessions ?? 0),
+      longSessions: Number(row.long_sessions ?? 0),
+      shortVisitors: Number(row.short_visitors ?? 0),
+      longVisitors: Number(row.long_visitors ?? 0),
     })),
   });
 }

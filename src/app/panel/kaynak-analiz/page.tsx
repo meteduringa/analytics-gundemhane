@@ -12,10 +12,10 @@ type Site = {
 
 type SourceRow = {
   sourceWebsiteId: string;
-  sessions: number;
-  visitors: number;
-  avgSeconds: number;
-  totalSeconds: number;
+  shortSessions: number;
+  longSessions: number;
+  shortVisitors: number;
+  longVisitors: number;
 };
 
 const formatDateInput = (date: Date) => date.toISOString().split("T")[0];
@@ -24,14 +24,6 @@ const daysAgo = (days: number) => {
   const date = new Date();
   date.setDate(date.getDate() - days);
   return date;
-};
-
-const formatDuration = (seconds: number) => {
-  if (!seconds || Number.isNaN(seconds)) return "0s";
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  if (mins === 0) return `${secs}s`;
-  return `${mins}m ${secs}s`;
 };
 
 export default function SourceAnalysisPage() {
@@ -50,11 +42,11 @@ export default function SourceAnalysisPage() {
   );
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [landingUrl, setLandingUrl] = useState("");
-  const [minAvgSeconds, setMinAvgSeconds] = useState("1");
   const [isLoading, setIsLoading] = useState(false);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copiedShort, setCopiedShort] = useState(false);
+  const [copiedLong, setCopiedLong] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -68,7 +60,17 @@ export default function SourceAnalysisPage() {
       router.replace("/login");
       return;
     }
-    setUser(JSON.parse(rawUser));
+    const parsed = JSON.parse(rawUser) as {
+      id: string;
+      email: string;
+      name?: string | null;
+      role: "ADMIN" | "CUSTOMER";
+    };
+    if (parsed.role !== "ADMIN") {
+      router.replace("/panel");
+      return;
+    }
+    setUser(parsed);
     const frame = window.requestAnimationFrame(() => setReady(true));
     return () => window.cancelAnimationFrame(frame);
   }, [router]);
@@ -102,15 +104,15 @@ export default function SourceAnalysisPage() {
     setIsLoading(true);
     setError("");
     try {
+      if (!landingUrl.trim()) {
+        throw new Error("Haber URL zorunludur.");
+      }
       const params = new URLSearchParams({
         websiteId: selectedSiteId,
         start: startDate,
         end: endDate,
-        minAvgSeconds: minAvgSeconds || "1",
+        landingUrl: landingUrl.trim(),
       });
-      if (landingUrl.trim()) {
-        params.set("landingUrl", landingUrl.trim());
-      }
       const response = await fetch(
         `/api/panel/source-analysis?${params.toString()}`
       );
@@ -126,15 +128,34 @@ export default function SourceAnalysisPage() {
     }
   };
 
-  const handleCopy = async () => {
-    if (!sources.length) return;
-    const value = sources.map((row) => row.sourceWebsiteId).join(", ");
+  const shortList = useMemo(
+    () => sources.filter((row) => row.shortSessions > 0),
+    [sources]
+  );
+  const longList = useMemo(
+    () => sources.filter((row) => row.longSessions > 0),
+    [sources]
+  );
+
+  const handleCopy = async (mode: "short" | "long") => {
+    const list = mode === "short" ? shortList : longList;
+    if (!list.length) return;
+    const value = list.map((row) => row.sourceWebsiteId).join(", ");
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      if (mode === "short") {
+        setCopiedShort(true);
+        window.setTimeout(() => setCopiedShort(false), 1500);
+      } else {
+        setCopiedLong(true);
+        window.setTimeout(() => setCopiedLong(false), 1500);
+      }
     } catch {
-      setCopied(false);
+      if (mode === "short") {
+        setCopiedShort(false);
+      } else {
+        setCopiedLong(false);
+      }
     }
   };
 
@@ -199,21 +220,12 @@ export default function SourceAnalysisPage() {
             </label>
 
             <label className="text-xs font-semibold text-slate-500">
-              Landing URL (opsiyonel)
+              Haber URL (zorunlu)
               <input
                 value={landingUrl}
                 onChange={(event) => setLandingUrl(event.target.value)}
-                placeholder="/haber/ornek-baslik"
+                placeholder="https://site.com/haber/ornek-baslik"
                 className="mt-2 w-full min-w-[220px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
-              />
-            </label>
-
-            <label className="text-xs font-semibold text-slate-500">
-              Min Ortalama (sn)
-              <input
-                value={minAvgSeconds}
-                onChange={(event) => setMinAvgSeconds(event.target.value)}
-                className="mt-2 w-[140px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
               />
             </label>
 
@@ -235,70 +247,132 @@ export default function SourceAnalysisPage() {
         )}
 
         <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Sonuçlar
-              </p>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Kaynak Website ID Performansı
-              </h2>
-              <p className="text-xs text-slate-500">
-                Sadece source website_id yakalanan trafik listelenir.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
-              disabled={!sources.length}
-            >
-              {copied ? "Kopyalandı" : "ID'leri Kopyala"}
-            </button>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+              Sonuçlar
+            </p>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Popcent Kaynak Analizi (Haber Bazlı)
+            </h2>
+            <p className="text-xs text-slate-500">
+              Sadece Popcent kaynaklı (source website_id bulunan) trafik listelenir.
+            </p>
           </div>
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-xs text-slate-600">
-              <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Website ID</th>
-                  <th className="px-3 py-2">Ziyaretçi</th>
-                  <th className="px-3 py-2">Session</th>
-                  <th className="px-3 py-2">Ort. Süre</th>
-                  <th className="px-3 py-2">Toplam Süre</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sources.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-3 py-6 text-center text-slate-400"
-                    >
-                      Sonuç bulunamadı.
-                    </td>
-                  </tr>
-                )}
-                {sources.map((row) => (
-                  <tr
-                    key={row.sourceWebsiteId}
-                    className="border-b border-slate-100"
-                  >
-                    <td className="px-3 py-2 font-semibold text-slate-800">
-                      {row.sourceWebsiteId}
-                    </td>
-                    <td className="px-3 py-2">{row.visitors}</td>
-                    <td className="px-3 py-2">{row.sessions}</td>
-                    <td className="px-3 py-2">
-                      {formatDuration(row.avgSeconds)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {formatDuration(row.totalSeconds)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    0 Saniye Altı
+                  </p>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Kara Liste Adayları
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy("short")}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                  disabled={!shortList.length}
+                >
+                  {copiedShort ? "Kopyalandı" : "ID'leri Kopyala"}
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-xs text-slate-600">
+                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Website ID</th>
+                      <th className="px-3 py-2">Session</th>
+                      <th className="px-3 py-2">Ziyaretçi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shortList.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-3 py-6 text-center text-slate-400"
+                        >
+                          Sonuç bulunamadı.
+                        </td>
+                      </tr>
+                    )}
+                    {shortList.map((row) => (
+                      <tr
+                        key={row.sourceWebsiteId}
+                        className="border-b border-slate-100"
+                      >
+                        <td className="px-3 py-2 font-semibold text-slate-800">
+                          {row.sourceWebsiteId}
+                        </td>
+                        <td className="px-3 py-2">{row.shortSessions}</td>
+                        <td className="px-3 py-2">{row.shortVisitors}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    1 Saniye Üstü
+                  </p>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Beyaz Liste Adayları
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy("long")}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                  disabled={!longList.length}
+                >
+                  {copiedLong ? "Kopyalandı" : "ID'leri Kopyala"}
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-xs text-slate-600">
+                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Website ID</th>
+                      <th className="px-3 py-2">Session</th>
+                      <th className="px-3 py-2">Ziyaretçi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {longList.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-3 py-6 text-center text-slate-400"
+                        >
+                          Sonuç bulunamadı.
+                        </td>
+                      </tr>
+                    )}
+                    {longList.map((row) => (
+                      <tr
+                        key={row.sourceWebsiteId}
+                        className="border-b border-slate-100"
+                      >
+                        <td className="px-3 py-2 font-semibold text-slate-800">
+                          {row.sourceWebsiteId}
+                        </td>
+                        <td className="px-3 py-2">{row.longSessions}</td>
+                        <td className="px-3 py-2">{row.longVisitors}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
       </div>

@@ -165,30 +165,6 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       asString(payload.sourceWebsiteId) ??
       null;
 
-    if (website.blacklistWebsiteIds?.length && sourceWebsiteId) {
-      if (website.blacklistWebsiteIds.includes(sourceWebsiteId)) {
-        return NextResponse.json(
-          { error: "Source blocked." },
-          { status: 403, headers: corsHeaders(origin) }
-        );
-      }
-    }
-
-    if (website.whitelistWebsiteIds?.length) {
-      if (!sourceWebsiteId) {
-        return NextResponse.json(
-          { error: "Source not allowed." },
-          { status: 403, headers: corsHeaders(origin) }
-        );
-      }
-      if (!website.whitelistWebsiteIds.includes(sourceWebsiteId)) {
-        return NextResponse.json(
-          { error: "Source not allowed." },
-          { status: 403, headers: corsHeaders(origin) }
-        );
-      }
-    }
-
     const originHost =
       extractHostname(origin) ?? extractHostname(request.headers.get("referer"));
 
