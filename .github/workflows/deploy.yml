@@ -21,6 +21,7 @@ jobs:
           port: 22
           script: |
             set -e
+            git config --global --add safe.directory /opt/analytics
             cd /opt/analytics
             git pull origin main
             bash /opt/analytics/deploy.sh
