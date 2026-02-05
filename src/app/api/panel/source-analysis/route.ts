@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     conditions.push(Prisma.sql`e."url" = ${landingUrl}`);
   }
 
-  const whereClause = Prisma.join(conditions, Prisma.sql` AND `);
+  const whereClause = Prisma.join(conditions, " AND ");
 
   const rows = (await prisma.$queryRaw`
     SELECT
