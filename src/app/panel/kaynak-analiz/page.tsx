@@ -26,6 +26,22 @@ const daysAgo = (days: number) => {
   return date;
 };
 
+const normalizeLandingInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    try {
+      const parsed = new URL(trimmed, "https://example.com");
+      return `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return "";
+    }
+  }
+};
+
 export default function SourceAnalysisPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -107,11 +123,15 @@ export default function SourceAnalysisPage() {
       if (!landingUrl.trim()) {
         throw new Error("Haber URL zorunludur.");
       }
+      const normalizedLanding = normalizeLandingInput(landingUrl);
+      if (!normalizedLanding) {
+        throw new Error("Haber URL geçersiz.");
+      }
       const params = new URLSearchParams({
         websiteId: selectedSiteId,
         start: startDate,
         end: endDate,
-        landingUrl: landingUrl.trim(),
+        landingUrl: normalizedLanding,
       });
       const response = await fetch(
         `/api/panel/source-analysis?${params.toString()}`
