@@ -12,10 +12,13 @@ type Site = {
 
 type SourceRow = {
   sourceWebsiteId: string;
+  totalSessions: number;
   shortSessions: number;
   longSessions: number;
+  totalVisitors: number;
   shortVisitors: number;
   longVisitors: number;
+  longShare: number;
 };
 
 const formatDateInput = (date: Date) => date.toISOString().split("T")[0];
@@ -58,6 +61,7 @@ export default function SourceAnalysisPage() {
   );
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [landingUrl, setLandingUrl] = useState("");
+  const [minSeconds, setMinSeconds] = useState("1");
   const [isLoading, setIsLoading] = useState(false);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [error, setError] = useState("");
@@ -132,6 +136,7 @@ export default function SourceAnalysisPage() {
         start: startDate,
         end: endDate,
         landingUrl: normalizedLanding,
+        minSeconds: minSeconds || "1",
       });
       const response = await fetch(
         `/api/panel/source-analysis?${params.toString()}`
@@ -249,6 +254,19 @@ export default function SourceAnalysisPage() {
               />
             </label>
 
+            <label className="text-xs font-semibold text-slate-500">
+              Min Süre (sn)
+              <select
+                value={minSeconds}
+                onChange={(event) => setMinSeconds(event.target.value)}
+                className="mt-2 w-[140px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="1">1+ sn</option>
+                <option value="2">2+ sn</option>
+                <option value="3">3+ sn</option>
+              </select>
+            </label>
+
             <button
               type="button"
               onClick={loadSources}
@@ -275,7 +293,7 @@ export default function SourceAnalysisPage() {
               Popcent Kaynak Analizi (Haber Bazlı)
             </h2>
             <p className="text-xs text-slate-500">
-              Sadece Popcent kaynaklı (source website_id bulunan) trafik listelenir.
+              Sadece Popcent kaynaklı (referrer veya source id bulunan) trafik listelenir.
             </p>
           </div>
 
@@ -284,7 +302,7 @@ export default function SourceAnalysisPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    0 Saniye Altı
+                    {minSeconds} Saniye Altı
                   </p>
                   <h3 className="text-sm font-semibold text-slate-800">
                     Kara Liste Adayları
@@ -307,13 +325,14 @@ export default function SourceAnalysisPage() {
                       <th className="px-3 py-2">Website ID</th>
                       <th className="px-3 py-2">Session</th>
                       <th className="px-3 py-2">Ziyaretçi</th>
+                      <th className="px-3 py-2">Oran %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {shortList.length === 0 && (
                       <tr>
                         <td
-                          colSpan={3}
+                          colSpan={4}
                           className="px-3 py-6 text-center text-slate-400"
                         >
                           Sonuç bulunamadı.
@@ -330,6 +349,13 @@ export default function SourceAnalysisPage() {
                         </td>
                         <td className="px-3 py-2">{row.shortSessions}</td>
                         <td className="px-3 py-2">{row.shortVisitors}</td>
+                        <td className="px-3 py-2">
+                          {row.totalSessions
+                            ? Math.round(
+                                (row.shortSessions / row.totalSessions) * 100
+                              )
+                            : 0}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -341,7 +367,7 @@ export default function SourceAnalysisPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    1 Saniye Üstü
+                    {minSeconds} Saniye Üstü
                   </p>
                   <h3 className="text-sm font-semibold text-slate-800">
                     Beyaz Liste Adayları
@@ -364,13 +390,14 @@ export default function SourceAnalysisPage() {
                       <th className="px-3 py-2">Website ID</th>
                       <th className="px-3 py-2">Session</th>
                       <th className="px-3 py-2">Ziyaretçi</th>
+                      <th className="px-3 py-2">Oran %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {longList.length === 0 && (
                       <tr>
                         <td
-                          colSpan={3}
+                          colSpan={4}
                           className="px-3 py-6 text-center text-slate-400"
                         >
                           Sonuç bulunamadı.
@@ -387,6 +414,7 @@ export default function SourceAnalysisPage() {
                         </td>
                         <td className="px-3 py-2">{row.longSessions}</td>
                         <td className="px-3 py-2">{row.longVisitors}</td>
+                        <td className="px-3 py-2">{row.longShare}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -54,8 +54,10 @@ const normalizeLandingUrl = (value: string | null) => {
 
 type SourceRow = {
   source_website_id: string;
+  total_sessions: bigint;
   short_sessions: bigint;
   long_sessions: bigint;
+  total_visitors: bigint;
   short_visitors: bigint;
   long_visitors: bigint;
 };
@@ -66,6 +68,7 @@ export async function GET(request: Request) {
   const startValue = searchParams.get("start");
   const endValue = searchParams.get("end");
   const landingUrlRaw = searchParams.get("landingUrl");
+  const minSeconds = Math.max(1, Number(searchParams.get("minSeconds") ?? 1));
 
   if (!websiteId) {
     return NextResponse.json(
@@ -74,15 +77,17 @@ export async function GET(request: Request) {
     );
   }
 
+  const normalizedStart = startValue ? normalizeDateInput(startValue) : null;
+  const normalizedEnd = endValue ? normalizeDateInput(endValue) : null;
   const startDate = parseFilterDate(startValue);
   const endDate = parseFilterDate(endValue, true);
-  if (startValue && !startDate) {
+  if (startValue && !normalizedStart) {
     return NextResponse.json(
       { error: "Başlangıç tarihi geçersiz." },
       { status: 400 }
     );
   }
-  if (endValue && !endDate) {
+  if (endValue && !normalizedEnd) {
     return NextResponse.json(
       { error: "Bitiş tarihi geçersiz." },
       { status: 400 }
@@ -94,6 +99,10 @@ export async function GET(request: Request) {
     POPCENT_REFERRER_HOSTS.map((host) => Prisma.sql`${host}`),
     ", "
   );
+
+  const createdAtLocal = Prisma.sql`(e."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')`;
+  const startTs = normalizedStart ? `${normalizedStart} 00:00:00` : null;
+  const endTs = normalizedEnd ? `${normalizedEnd} 23:59:59` : null;
 
   const conditions: Prisma.Sql[] = [
     Prisma.sql`e."websiteId" = ${websiteId}`,
@@ -108,11 +117,11 @@ export async function GET(request: Request) {
     `,
   ];
 
-  if (startDate) {
-    conditions.push(Prisma.sql`e."createdAt" >= ${startDate}`);
+  if (startTs) {
+    conditions.push(Prisma.sql`${createdAtLocal} >= ${startTs}`);
   }
-  if (endDate) {
-    conditions.push(Prisma.sql`e."createdAt" <= ${endDate}`);
+  if (endTs) {
+    conditions.push(Prisma.sql`${createdAtLocal} <= ${endTs}`);
   }
   if (landingUrl) {
     conditions.push(Prisma.sql`e."url" = ${landingUrl}`);
@@ -146,10 +155,12 @@ export async function GET(request: Request) {
     )
     SELECT
       source_website_id,
-      SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS short_sessions,
-      SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions,
-      COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS short_visitors,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 1 THEN "visitorId" END) AS long_visitors
+      COUNT(*) AS total_sessions,
+      SUM(CASE WHEN duration_seconds < ${minSeconds} THEN 1 ELSE 0 END) AS short_sessions,
+      SUM(CASE WHEN duration_seconds >= ${minSeconds} THEN 1 ELSE 0 END) AS long_sessions,
+      COUNT(DISTINCT "visitorId") AS total_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds < ${minSeconds} THEN "visitorId" END) AS short_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= ${minSeconds} THEN "visitorId" END) AS long_visitors
     FROM durations
     GROUP BY source_website_id
     ORDER BY long_sessions DESC
@@ -159,10 +170,16 @@ export async function GET(request: Request) {
   return NextResponse.json({
     sources: rows.map((row) => ({
       sourceWebsiteId: row.source_website_id,
+      totalSessions: Number(row.total_sessions ?? 0),
       shortSessions: Number(row.short_sessions ?? 0),
       longSessions: Number(row.long_sessions ?? 0),
+      totalVisitors: Number(row.total_visitors ?? 0),
       shortVisitors: Number(row.short_visitors ?? 0),
       longVisitors: Number(row.long_visitors ?? 0),
+      longShare: row.total_sessions
+        ? Math.round((Number(row.long_sessions ?? 0) / Number(row.total_sessions)) * 100)
+        : 0,
     })),
+    minSeconds,
   });
 }
