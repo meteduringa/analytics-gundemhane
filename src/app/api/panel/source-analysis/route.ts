@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
+const POPCENT_REFERRER_HOSTS = [
+  "ppcnt.org",
+  "ppcnt.net",
+  "ppcnt.live",
+  "ppcnt.us",
+  "ppcnt.co",
+  "ppcnt.eu",
+  "popcent.org",
+  "flarby.com",
+];
+
 const normalizeDateInput = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -79,12 +90,22 @@ export async function GET(request: Request) {
   }
   const landingUrl = normalizeLandingUrl(landingUrlRaw);
 
+  const popcentHostList = Prisma.join(
+    POPCENT_REFERRER_HOSTS.map((host) => Prisma.sql`${host}`),
+    ", "
+  );
+
   const conditions: Prisma.Sql[] = [
     Prisma.sql`e."websiteId" = ${websiteId}`,
     Prisma.sql`e."type" = 'PAGEVIEW'`,
     Prisma.sql`e."mode" = 'RAW'`,
-    Prisma.sql`e."eventData"->>'source_website_id' IS NOT NULL`,
-    Prisma.sql`e."eventData"->>'source_website_id' <> ''`,
+    Prisma.sql`
+      (
+        (e."eventData"->>'source_website_id' IS NOT NULL AND e."eventData"->>'source_website_id' <> '')
+        OR
+        (COALESCE(NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), ''), '') IN (${popcentHostList}))
+      )
+    `,
   ];
 
   if (startDate) {
@@ -104,13 +125,14 @@ export async function GET(request: Request) {
       SELECT DISTINCT
         e."sessionId" AS "sessionId",
         e."visitorId" AS "visitorId",
-        (e."eventData"->>'source_website_id') AS source_website_id
+        (e."eventData"->>'source_website_id') AS source_website_id,
+        NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), '') AS referrer_host
       FROM "analytics_events" e
       WHERE ${whereClause}
     ),
     durations AS (
       SELECT
-        m.source_website_id,
+        COALESCE(m.source_website_id, m.referrer_host) AS source_website_id,
         m."sessionId" AS "sessionId",
         m."visitorId" AS "visitorId",
         GREATEST(
