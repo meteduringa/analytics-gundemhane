@@ -2,10 +2,33 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
+const normalizeDateInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const dotMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(trimmed);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+  const slashMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+  return null;
+};
+
 const parseFilterDate = (value: string | null, endOfDay = false) => {
   if (!value) return null;
-  const iso = `${value}T${endOfDay ? "23:59:59" : "00:00:00"}+03:00`;
-  return new Date(iso);
+  const normalized = normalizeDateInput(value);
+  if (!normalized) return null;
+  const iso = `${normalized}T${endOfDay ? "23:59:59" : "00:00:00"}+03:00`;
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
 };
 
 const normalizeLandingUrl = (value: string | null) => {
@@ -42,6 +65,18 @@ export async function GET(request: Request) {
 
   const startDate = parseFilterDate(startValue);
   const endDate = parseFilterDate(endValue, true);
+  if (startValue && !startDate) {
+    return NextResponse.json(
+      { error: "Başlangıç tarihi geçersiz." },
+      { status: 400 }
+    );
+  }
+  if (endValue && !endDate) {
+    return NextResponse.json(
+      { error: "Bitiş tarihi geçersiz." },
+      { status: 400 }
+    );
+  }
   const landingUrl = normalizeLandingUrl(landingUrlRaw);
 
   const conditions: Prisma.Sql[] = [
