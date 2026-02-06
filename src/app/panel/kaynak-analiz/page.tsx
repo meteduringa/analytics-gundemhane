@@ -14,16 +14,16 @@ type SourceRow = {
   sourceWebsiteId: string;
   totalSessions: number;
   totalVisitors: number;
-  longSessions: Record<number, number>;
-  longVisitors: Record<number, number>;
-  longShare: Record<number, number>;
+  longSessions: Record<string, number>;
+  longVisitors: Record<string, number>;
+  longShare: Record<string, number>;
 };
 
 type BreakdownRow = {
   label: string;
   totalSessions: number;
-  longSessions: Record<number, number>;
-  longShare: Record<number, number>;
+  longSessions: Record<string, number>;
+  longShare: Record<string, number>;
 };
 
 type LandingItem = {
@@ -87,6 +87,7 @@ export default function SourceAnalysisPage() {
   const [landingResults, setLandingResults] = useState<
     Record<string, LandingResult>
   >({});
+  const [showBestComboOnly, setShowBestComboOnly] = useState(true);
   const [error, setError] = useState("");
   const [copiedShort, setCopiedShort] = useState(false);
   const [copiedLong, setCopiedLong] = useState(false);
@@ -239,27 +240,32 @@ export default function SourceAnalysisPage() {
     }
   };
 
-  const thresholds = [1, 3, 5, 10];
+  const thresholds = [
+    { key: "lt1", label: "1 sn altı" },
+    { key: "lt3", label: "3 sn altı" },
+    { key: "ge5", label: "5+ sn" },
+    { key: "ge10", label: "10+ sn" },
+  ];
 
-  const handleCopy = async (threshold: number, list: SourceRow[]) => {
+  const handleCopy = async (thresholdKey: string, list: SourceRow[]) => {
     const filtered = list.filter(
-      (row) => (row.longSessions?.[threshold] ?? 0) > 0
+      (row) => (row.longSessions?.[thresholdKey] ?? 0) > 0
     );
     if (!filtered.length) return;
     const value = filtered.map((row) => row.sourceWebsiteId).join(", ");
     try {
       await navigator.clipboard.writeText(value);
-      if (threshold === 1) {
+      if (thresholdKey === "lt1") {
         setCopiedShort(true);
         window.setTimeout(() => setCopiedShort(false), 1500);
-      } else if (threshold === 3) {
+      } else if (thresholdKey === "lt3") {
         setCopiedLong(true);
         window.setTimeout(() => setCopiedLong(false), 1500);
       }
     } catch {
-      if (threshold === 1) {
+      if (thresholdKey === "lt1") {
         setCopiedShort(false);
-      } else if (threshold === 3) {
+      } else if (thresholdKey === "lt3") {
         setCopiedLong(false);
       }
     }
@@ -464,11 +470,11 @@ export default function SourceAnalysisPage() {
             );
             const thresholdStats = thresholds.map((threshold) => {
               const longSessions = sources.reduce(
-                (sum, row) => sum + (row.longSessions?.[threshold] ?? 0),
+                (sum, row) => sum + (row.longSessions?.[threshold.key] ?? 0),
                 0
               );
               const longVisitors = sources.reduce(
-                (sum, row) => sum + (row.longVisitors?.[threshold] ?? 0),
+                (sum, row) => sum + (row.longVisitors?.[threshold.key] ?? 0),
                 0
               );
               const share = totalSessions
@@ -507,11 +513,11 @@ export default function SourceAnalysisPage() {
                   <div className="mt-4 grid gap-3 md:grid-cols-4">
                     {thresholdStats.map((stat) => (
                       <div
-                        key={stat.threshold}
+                        key={stat.threshold.key}
                         className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600"
                       >
                         <p className="text-[11px] font-semibold uppercase text-slate-400">
-                          {stat.threshold}+ sn
+                          {stat.threshold.label}
                         </p>
                         <p className="mt-1 text-sm font-semibold text-slate-800">
                           {stat.share}%
@@ -529,33 +535,35 @@ export default function SourceAnalysisPage() {
                   {thresholds.map((threshold) => {
                     const list = sources
                       .filter(
-                        (row) => (row.longSessions?.[threshold] ?? 0) > 0
+                        (row) => (row.longSessions?.[threshold.key] ?? 0) > 0
                       )
                       .sort(
                         (a, b) =>
-                          (b.longSessions?.[threshold] ?? 0) -
-                          (a.longSessions?.[threshold] ?? 0)
+                          (b.longSessions?.[threshold.key] ?? 0) -
+                          (a.longSessions?.[threshold.key] ?? 0)
                       );
                     const copied =
-                      (threshold === 1 && copiedShort) ||
-                      (threshold === 3 && copiedLong);
+                      (threshold.key === "lt1" && copiedShort) ||
+                      (threshold.key === "lt3" && copiedLong);
                     return (
                       <div
-                        key={`${item.id}-${threshold}`}
+                        key={`${item.id}-${threshold.key}`}
                         className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                       >
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                              {threshold}+ Saniye
+                              {threshold.label}
                             </p>
                             <h3 className="text-sm font-semibold text-slate-800">
-                              Beyaz Liste Adayları
+                              {threshold.key.startsWith("lt")
+                                ? "Kara Liste Adayları"
+                                : "Beyaz Liste Adayları"}
                             </h3>
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleCopy(threshold, sources)}
+                            onClick={() => handleCopy(threshold.key, sources)}
                             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
                             disabled={!list.length}
                           >
@@ -586,20 +594,20 @@ export default function SourceAnalysisPage() {
                               )}
                               {list.map((row) => (
                                 <tr
-                                  key={`${item.id}-${threshold}-${row.sourceWebsiteId}`}
+                                  key={`${item.id}-${threshold.key}-${row.sourceWebsiteId}`}
                                   className="border-b border-slate-100"
                                 >
                                   <td className="px-3 py-2 font-semibold text-slate-800">
                                     {row.sourceWebsiteId}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {row.longSessions?.[threshold] ?? 0}
+                                    {row.longSessions?.[threshold.key] ?? 0}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {row.longVisitors?.[threshold] ?? 0}
+                                    {row.longVisitors?.[threshold.key] ?? 0}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {row.longShare?.[threshold] ?? 0}
+                                    {row.longShare?.[threshold.key] ?? 0}
                                   </td>
                                 </tr>
                               ))}
@@ -622,8 +630,8 @@ export default function SourceAnalysisPage() {
                           <tr>
                             <th className="px-3 py-2">Cihaz</th>
                             <th className="px-3 py-2">Session</th>
-                            <th className="px-3 py-2">1+ sn %</th>
-                            <th className="px-3 py-2">3+ sn %</th>
+                            <th className="px-3 py-2">1 sn altı %</th>
+                            <th className="px-3 py-2">3 sn altı %</th>
                             <th className="px-3 py-2">5+ sn %</th>
                             <th className="px-3 py-2">10+ sn %</th>
                           </tr>
@@ -649,16 +657,16 @@ export default function SourceAnalysisPage() {
                               </td>
                               <td className="px-3 py-2">{row.totalSessions}</td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[1] ?? 0}
+                                {row.longShare?.lt1 ?? 0}
                               </td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[3] ?? 0}
+                                {row.longShare?.lt3 ?? 0}
                               </td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[5] ?? 0}
+                                {row.longShare?.ge5 ?? 0}
                               </td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[10] ?? 0}
+                                {row.longShare?.ge10 ?? 0}
                               </td>
                             </tr>
                           ))}
@@ -677,8 +685,8 @@ export default function SourceAnalysisPage() {
                           <tr>
                             <th className="px-3 py-2">Tarayıcı</th>
                             <th className="px-3 py-2">Session</th>
-                            <th className="px-3 py-2">1+ sn %</th>
-                            <th className="px-3 py-2">3+ sn %</th>
+                            <th className="px-3 py-2">1 sn altı %</th>
+                            <th className="px-3 py-2">3 sn altı %</th>
                             <th className="px-3 py-2">5+ sn %</th>
                             <th className="px-3 py-2">10+ sn %</th>
                           </tr>
@@ -704,16 +712,16 @@ export default function SourceAnalysisPage() {
                               </td>
                               <td className="px-3 py-2">{row.totalSessions}</td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[1] ?? 0}
+                                {row.longShare?.lt1 ?? 0}
                               </td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[3] ?? 0}
+                                {row.longShare?.lt3 ?? 0}
                               </td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[5] ?? 0}
+                                {row.longShare?.ge5 ?? 0}
                               </td>
                               <td className="px-3 py-2">
-                                {row.longShare?.[10] ?? 0}
+                                {row.longShare?.ge10 ?? 0}
                               </td>
                             </tr>
                           ))}
@@ -724,22 +732,35 @@ export default function SourceAnalysisPage() {
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="text-sm font-semibold text-slate-800">
-                    Kombinasyon (Cihaz + Tarayıcı)
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Etiket: {item.label || "—"}
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-800">
+                        Kombinasyon (Cihaz + Tarayıcı)
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Etiket: {item.label || "—"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowBestComboOnly((prev) => !prev)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                    >
+                      {showBestComboOnly
+                        ? "Tüm kombinasyonlar"
+                        : "En iyi kombinasyon"}
+                    </button>
+                  </div>
                   <div className="mt-4 overflow-x-auto">
                     <table className="min-w-full text-left text-xs text-slate-600">
                       <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
                         <tr>
                           <th className="px-3 py-2">Kombinasyon</th>
                           <th className="px-3 py-2">Session</th>
-                          <th className="px-3 py-2">1+ sn %</th>
-                          <th className="px-3 py-2">3+ sn %</th>
-                          <th className="px-3 py-2">5+ sn %</th>
-                          <th className="px-3 py-2">10+ sn %</th>
+                            <th className="px-3 py-2">1 sn altı %</th>
+                            <th className="px-3 py-2">3 sn altı %</th>
+                            <th className="px-3 py-2">5+ sn %</th>
+                            <th className="px-3 py-2">10+ sn %</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -753,7 +774,10 @@ export default function SourceAnalysisPage() {
                             </td>
                           </tr>
                         )}
-                        {(result?.combos ?? []).map((row) => (
+                        {(showBestComboOnly
+                          ? (result?.combos ?? []).slice(0, 1)
+                          : result?.combos ?? []
+                        ).map((row) => (
                           <tr
                             key={`${item.id}-combo-${row.label}`}
                             className="border-b border-slate-100"
@@ -763,19 +787,19 @@ export default function SourceAnalysisPage() {
                             </td>
                             <td className="px-3 py-2">{row.totalSessions}</td>
                             <td className="px-3 py-2">
-                              {row.longShare?.[1] ?? 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.longShare?.[3] ?? 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.longShare?.[5] ?? 0}
-                            </td>
-                            <td className="px-3 py-2">
-                              {row.longShare?.[10] ?? 0}
-                            </td>
-                          </tr>
-                        ))}
+                                {row.longShare?.lt1 ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.lt3 ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.ge5 ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.ge10 ?? 0}
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>

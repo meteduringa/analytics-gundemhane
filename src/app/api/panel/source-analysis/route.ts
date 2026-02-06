@@ -56,14 +56,14 @@ type SourceRow = {
   source_website_id: string;
   total_sessions: bigint;
   total_visitors: bigint;
-  long_sessions_1: bigint;
-  long_sessions_3: bigint;
-  long_sessions_5: bigint;
-  long_sessions_10: bigint;
-  long_visitors_1: bigint;
-  long_visitors_3: bigint;
-  long_visitors_5: bigint;
-  long_visitors_10: bigint;
+  lt1_sessions: bigint;
+  lt3_sessions: bigint;
+  ge5_sessions: bigint;
+  ge10_sessions: bigint;
+  lt1_visitors: bigint;
+  lt3_visitors: bigint;
+  ge5_visitors: bigint;
+  ge10_visitors: bigint;
 };
 
 export async function GET(request: Request) {
@@ -168,17 +168,17 @@ export async function GET(request: Request) {
       source_website_id,
       COUNT(*) AS total_sessions,
       COUNT(DISTINCT "visitorId") AS total_visitors,
-      SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
-      SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
-      SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
-      SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 1 THEN "visitorId" END) AS long_visitors_1,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 3 THEN "visitorId" END) AS long_visitors_3,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS long_visitors_5,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS long_visitors_10
+      SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+      SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+      SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+      SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions,
+      COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS lt1_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds < 3 THEN "visitorId" END) AS lt3_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS ge5_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS ge10_visitors
     FROM durations
     GROUP BY source_website_id
-    ORDER BY long_sessions_3 DESC
+    ORDER BY ge5_sessions DESC
     LIMIT 200
   `) as SourceRow[];
 
@@ -188,33 +188,33 @@ export async function GET(request: Request) {
       totalSessions: Number(row.total_sessions ?? 0),
       totalVisitors: Number(row.total_visitors ?? 0),
       longSessions: {
-        1: Number(row.long_sessions_1 ?? 0),
-        3: Number(row.long_sessions_3 ?? 0),
-        5: Number(row.long_sessions_5 ?? 0),
-        10: Number(row.long_sessions_10 ?? 0),
+        lt1: Number(row.lt1_sessions ?? 0),
+        lt3: Number(row.lt3_sessions ?? 0),
+        ge5: Number(row.ge5_sessions ?? 0),
+        ge10: Number(row.ge10_sessions ?? 0),
       },
       longVisitors: {
-        1: Number(row.long_visitors_1 ?? 0),
-        3: Number(row.long_visitors_3 ?? 0),
-        5: Number(row.long_visitors_5 ?? 0),
-        10: Number(row.long_visitors_10 ?? 0),
+        lt1: Number(row.lt1_visitors ?? 0),
+        lt3: Number(row.lt3_visitors ?? 0),
+        ge5: Number(row.ge5_visitors ?? 0),
+        ge10: Number(row.ge10_visitors ?? 0),
       },
       longShare: {
-        1: row.total_sessions
-          ? Math.round((Number(row.long_sessions_1 ?? 0) / Number(row.total_sessions)) * 100)
+        lt1: row.total_sessions
+          ? Math.round((Number(row.lt1_sessions ?? 0) / Number(row.total_sessions)) * 100)
           : 0,
-        3: row.total_sessions
-          ? Math.round((Number(row.long_sessions_3 ?? 0) / Number(row.total_sessions)) * 100)
+        lt3: row.total_sessions
+          ? Math.round((Number(row.lt3_sessions ?? 0) / Number(row.total_sessions)) * 100)
           : 0,
-        5: row.total_sessions
-          ? Math.round((Number(row.long_sessions_5 ?? 0) / Number(row.total_sessions)) * 100)
+        ge5: row.total_sessions
+          ? Math.round((Number(row.ge5_sessions ?? 0) / Number(row.total_sessions)) * 100)
           : 0,
-        10: row.total_sessions
-          ? Math.round((Number(row.long_sessions_10 ?? 0) / Number(row.total_sessions)) * 100)
+        ge10: row.total_sessions
+          ? Math.round((Number(row.ge10_sessions ?? 0) / Number(row.total_sessions)) * 100)
           : 0,
       },
     })),
-    thresholds: [1, 3, 5, 10],
+    thresholds: ["lt1", "lt3", "ge5", "ge10"],
     popcentOnly,
   });
 }

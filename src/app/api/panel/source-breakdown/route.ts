@@ -55,10 +55,10 @@ const POPCENT_REFERRER_HOSTS = [
 type BreakdownRow = {
   key: string;
   total_sessions: bigint;
-  long_sessions_1: bigint;
-  long_sessions_3: bigint;
-  long_sessions_5: bigint;
-  long_sessions_10: bigint;
+  lt1_sessions: bigint;
+  lt3_sessions: bigint;
+  ge5_sessions: bigint;
+  ge10_sessions: bigint;
 };
 
 export async function GET(request: Request) {
@@ -194,28 +194,28 @@ export async function GET(request: Request) {
     )
     SELECT 'device:' || device AS key,
            COUNT(*) AS total_sessions,
-           SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
-           SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
-           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
-           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10
+           SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+           SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions
     FROM classified
     GROUP BY device
     UNION ALL
     SELECT 'browser:' || browser AS key,
            COUNT(*) AS total_sessions,
-           SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
-           SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
-           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
-           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10
+           SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+           SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions
     FROM classified
     GROUP BY browser
     UNION ALL
     SELECT 'combo:' || device || '|' || browser AS key,
            COUNT(*) AS total_sessions,
-           SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
-           SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
-           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
-           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10
+           SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+           SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions
     FROM classified
     GROUP BY device, browser
   `) as BreakdownRow[];
@@ -229,20 +229,20 @@ export async function GET(request: Request) {
         label,
         totalSessions: total,
         longSessions: {
-          1: Number(row.long_sessions_1 ?? 0),
-          3: Number(row.long_sessions_3 ?? 0),
-          5: Number(row.long_sessions_5 ?? 0),
-          10: Number(row.long_sessions_10 ?? 0),
+          lt1: Number(row.lt1_sessions ?? 0),
+          lt3: Number(row.lt3_sessions ?? 0),
+          ge5: Number(row.ge5_sessions ?? 0),
+          ge10: Number(row.ge10_sessions ?? 0),
         },
         longShare: {
-          1: total ? Math.round((Number(row.long_sessions_1 ?? 0) / total) * 100) : 0,
-          3: total ? Math.round((Number(row.long_sessions_3 ?? 0) / total) * 100) : 0,
-          5: total ? Math.round((Number(row.long_sessions_5 ?? 0) / total) * 100) : 0,
-          10: total ? Math.round((Number(row.long_sessions_10 ?? 0) / total) * 100) : 0,
+          lt1: total ? Math.round((Number(row.lt1_sessions ?? 0) / total) * 100) : 0,
+          lt3: total ? Math.round((Number(row.lt3_sessions ?? 0) / total) * 100) : 0,
+          ge5: total ? Math.round((Number(row.ge5_sessions ?? 0) / total) * 100) : 0,
+          ge10: total ? Math.round((Number(row.ge10_sessions ?? 0) / total) * 100) : 0,
         },
       };
     })
-    .sort((a, b) => b.longShare[3] - a.longShare[3]);
+    .sort((a, b) => b.longShare.ge5 - a.longShare.ge5);
 
   const browser = rows
     .filter((row) => row.key.startsWith("browser:"))
@@ -253,20 +253,20 @@ export async function GET(request: Request) {
         label,
         totalSessions: total,
         longSessions: {
-          1: Number(row.long_sessions_1 ?? 0),
-          3: Number(row.long_sessions_3 ?? 0),
-          5: Number(row.long_sessions_5 ?? 0),
-          10: Number(row.long_sessions_10 ?? 0),
+          lt1: Number(row.lt1_sessions ?? 0),
+          lt3: Number(row.lt3_sessions ?? 0),
+          ge5: Number(row.ge5_sessions ?? 0),
+          ge10: Number(row.ge10_sessions ?? 0),
         },
         longShare: {
-          1: total ? Math.round((Number(row.long_sessions_1 ?? 0) / total) * 100) : 0,
-          3: total ? Math.round((Number(row.long_sessions_3 ?? 0) / total) * 100) : 0,
-          5: total ? Math.round((Number(row.long_sessions_5 ?? 0) / total) * 100) : 0,
-          10: total ? Math.round((Number(row.long_sessions_10 ?? 0) / total) * 100) : 0,
+          lt1: total ? Math.round((Number(row.lt1_sessions ?? 0) / total) * 100) : 0,
+          lt3: total ? Math.round((Number(row.lt3_sessions ?? 0) / total) * 100) : 0,
+          ge5: total ? Math.round((Number(row.ge5_sessions ?? 0) / total) * 100) : 0,
+          ge10: total ? Math.round((Number(row.ge10_sessions ?? 0) / total) * 100) : 0,
         },
       };
     })
-    .sort((a, b) => b.longShare[3] - a.longShare[3]);
+    .sort((a, b) => b.longShare.ge5 - a.longShare.ge5);
 
   const combos = rows
     .filter((row) => row.key.startsWith("combo:"))
@@ -277,23 +277,29 @@ export async function GET(request: Request) {
         label,
         totalSessions: total,
         longSessions: {
-          1: Number(row.long_sessions_1 ?? 0),
-          3: Number(row.long_sessions_3 ?? 0),
-          5: Number(row.long_sessions_5 ?? 0),
-          10: Number(row.long_sessions_10 ?? 0),
+          lt1: Number(row.lt1_sessions ?? 0),
+          lt3: Number(row.lt3_sessions ?? 0),
+          ge5: Number(row.ge5_sessions ?? 0),
+          ge10: Number(row.ge10_sessions ?? 0),
         },
         longShare: {
-          1: total ? Math.round((Number(row.long_sessions_1 ?? 0) / total) * 100) : 0,
-          3: total ? Math.round((Number(row.long_sessions_3 ?? 0) / total) * 100) : 0,
-          5: total ? Math.round((Number(row.long_sessions_5 ?? 0) / total) * 100) : 0,
-          10: total ? Math.round((Number(row.long_sessions_10 ?? 0) / total) * 100) : 0,
+          lt1: total ? Math.round((Number(row.lt1_sessions ?? 0) / total) * 100) : 0,
+          lt3: total ? Math.round((Number(row.lt3_sessions ?? 0) / total) * 100) : 0,
+          ge5: total ? Math.round((Number(row.ge5_sessions ?? 0) / total) * 100) : 0,
+          ge10: total ? Math.round((Number(row.ge10_sessions ?? 0) / total) * 100) : 0,
         },
       };
     })
-    .sort((a, b) => b.longShare[3] - a.longShare[3]);
+    .sort((a, b) => {
+      const primary = b.longShare.ge10 - a.longShare.ge10;
+      if (primary !== 0) return primary;
+      const secondary = b.longShare.ge5 - a.longShare.ge5;
+      if (secondary !== 0) return secondary;
+      return b.totalSessions - a.totalSessions;
+    });
 
   return NextResponse.json({
-    thresholds: [1, 3, 5, 10],
+    thresholds: ["lt1", "lt3", "ge5", "ge10"],
     popcentOnly,
     device,
     browser,
