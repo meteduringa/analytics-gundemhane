@@ -177,14 +177,30 @@ export default function SourceAnalysisPage() {
     setIsLoading(true);
     setError("");
     try {
-      if (!landingItems.length) {
+      let itemsToAnalyze = landingItems;
+      if (!itemsToAnalyze.length && landingInput.trim()) {
+        const normalizedLanding = normalizeLandingInput(landingInput);
+        if (!normalizedLanding) {
+          throw new Error("Haber URL geçersiz.");
+        }
+        const item: LandingItem = {
+          id: crypto.randomUUID(),
+          label: categoryName.trim(),
+          urlInput: landingInput.trim(),
+          normalizedUrl: normalizedLanding,
+        };
+        itemsToAnalyze = [item];
+        setLandingItems((prev) => [item, ...prev]);
+        setLandingInput("");
+      }
+      if (!itemsToAnalyze.length) {
         throw new Error("En az bir haber URL ekleyin.");
       }
 
       const results: Record<string, LandingResult> = {};
 
       await Promise.all(
-        landingItems.map(async (item) => {
+        itemsToAnalyze.map(async (item) => {
           const params = new URLSearchParams({
             websiteId: selectedSiteId,
             start: startDate,
