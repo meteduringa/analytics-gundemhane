@@ -31,6 +31,11 @@ type LandingItem = {
   label: string;
   urlInput: string;
   normalizedUrl: string;
+  report?: {
+    popcentClicks?: string;
+    costPerClick?: string;
+    spendTotal?: string;
+  };
 };
 
 type LandingResult = {
@@ -279,6 +284,11 @@ export default function SourceAnalysisPage() {
       label: categoryName.trim(),
       urlInput: landingInput.trim(),
       normalizedUrl: normalizedLanding,
+      report: {
+        popcentClicks: "",
+        costPerClick: "",
+        spendTotal: "",
+      },
     };
     setLandingItems((prev) => [item, ...prev]);
     setLandingInput("");
@@ -309,6 +319,11 @@ export default function SourceAnalysisPage() {
             label: pcCategory.trim(),
             urlInput: parsed.toString(),
             normalizedUrl: normalizedLanding,
+            report: {
+              popcentClicks: "",
+              costPerClick: "",
+              spendTotal: "",
+            },
           };
           setLandingItems((prev) => [item, ...prev]);
         }
@@ -338,6 +353,19 @@ export default function SourceAnalysisPage() {
     });
   };
 
+  const updateLandingReport = (
+    id: string,
+    patch: Partial<NonNullable<LandingItem["report"]>>
+  ) => {
+    setLandingItems((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, report: { ...(item.report ?? {}), ...patch } }
+          : item
+      )
+    );
+  };
+
   const loadSources = async () => {
     if (!selectedSiteId) return;
     setIsLoading(true);
@@ -354,6 +382,11 @@ export default function SourceAnalysisPage() {
           label: categoryName.trim(),
           urlInput: landingInput.trim(),
           normalizedUrl: normalizedLanding,
+          report: {
+            popcentClicks: "",
+            costPerClick: "",
+            spendTotal: "",
+          },
         };
         itemsToAnalyze = [item];
         setLandingItems((prev) => [item, ...prev]);
@@ -701,6 +734,28 @@ export default function SourceAnalysisPage() {
             const totalVisitors =
               summary?.totalVisitors ??
               sources.reduce((sum, row) => sum + (row.totalVisitors ?? 0), 0);
+            const rawClicks = item.report?.popcentClicks ?? "";
+            const rawCpc = item.report?.costPerClick ?? "";
+            const rawSpend = item.report?.spendTotal ?? "";
+            const popcentClicks = Number(rawClicks) || 0;
+            const costPerClick = Number(rawCpc) || 0;
+            const spendTotal = Number(rawSpend) || 0;
+            const computedSpend =
+              spendTotal > 0 ? spendTotal : costPerClick * popcentClicks;
+            const reflectedSessions = totalSessions;
+            const reflectedUniques = totalVisitors;
+            const reflectedRate = popcentClicks
+              ? Math.round((reflectedSessions / popcentClicks) * 100)
+              : 0;
+            const uniqueRate = popcentClicks
+              ? Math.round((reflectedUniques / popcentClicks) * 100)
+              : 0;
+            const costPerReflected = reflectedSessions
+              ? (computedSpend / reflectedSessions).toFixed(2)
+              : "0.00";
+            const costPerUnique = reflectedUniques
+              ? (computedSpend / reflectedUniques).toFixed(2)
+              : "0.00";
             const thresholdStats = thresholds.map((threshold) => {
               const longSessions =
                 summary?.longSessions?.[threshold.key] ??
@@ -767,6 +822,115 @@ export default function SourceAnalysisPage() {
                         </p>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white/90 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Rapor
+                      </p>
+                      <h3 className="text-sm font-semibold text-slate-800">
+                        Popcent Harcama ve Dönüşüm
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-end gap-3">
+                    <label className="text-xs font-semibold text-slate-500">
+                      Popcent Gönderilen Tıklama
+                      <input
+                        value={rawClicks}
+                        onChange={(event) =>
+                          updateLandingReport(item.id, {
+                            popcentClicks: event.target.value,
+                          })
+                        }
+                        placeholder="Örn: 1200"
+                        className="mt-2 w-full min-w-[180px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+                      />
+                    </label>
+
+                    <label className="text-xs font-semibold text-slate-500">
+                      Tıklama Başı Maliyet
+                      <input
+                        value={rawCpc}
+                        onChange={(event) =>
+                          updateLandingReport(item.id, {
+                            costPerClick: event.target.value,
+                          })
+                        }
+                        placeholder="Örn: 0.07"
+                        className="mt-2 w-full min-w-[160px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+                      />
+                    </label>
+
+                    <label className="text-xs font-semibold text-slate-500">
+                      Toplam Bütçe
+                      <input
+                        value={rawSpend}
+                        onChange={(event) =>
+                          updateLandingReport(item.id, {
+                            spendTotal: event.target.value,
+                          })
+                        }
+                        placeholder="Örn: 85"
+                        className="mt-2 w-full min-w-[160px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                      <p className="text-[11px] font-semibold uppercase text-slate-400">
+                        Popcent Gönderilen
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {popcentClicks}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                      <p className="text-[11px] font-semibold uppercase text-slate-400">
+                        Siteye Yansıyan
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {reflectedSessions}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        %{reflectedRate}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                      <p className="text-[11px] font-semibold uppercase text-slate-400">
+                        Tekil Kullanıcı
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {reflectedUniques}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        %{uniqueRate}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                      <p className="text-[11px] font-semibold uppercase text-slate-400">
+                        Toplam Bütçe
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {computedSpend.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                      <p className="text-[11px] font-semibold uppercase text-slate-400">
+                        Tekil Maliyeti
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {costPerUnique}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Yansıyan: {costPerReflected}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
