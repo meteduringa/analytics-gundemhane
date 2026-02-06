@@ -66,6 +66,19 @@ type SourceRow = {
   ge10_visitors: bigint;
 };
 
+type SummaryRow = {
+  total_sessions: bigint;
+  total_visitors: bigint;
+  lt1_sessions: bigint;
+  lt3_sessions: bigint;
+  ge5_sessions: bigint;
+  ge10_sessions: bigint;
+  lt1_visitors: bigint;
+  lt3_visitors: bigint;
+  ge5_visitors: bigint;
+  ge10_visitors: bigint;
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const websiteId = searchParams.get("websiteId");
@@ -138,7 +151,7 @@ export async function GET(request: Request) {
   }
   if (landingPath) {
     conditions.push(
-      Prisma.sql`split_part(e."url", '?', 1) = ${landingPath}`
+      Prisma.sql`rtrim(split_part(e."url", '?', 1), '/') = rtrim(${landingPath}, '/')`
     );
   }
 
@@ -186,6 +199,91 @@ export async function GET(request: Request) {
     LIMIT 200
   `) as SourceRow[];
 
+  const summaryRows = (await prisma.$queryRaw`
+    WITH matched AS (
+      SELECT DISTINCT
+        e."sessionId" AS "sessionId",
+        e."visitorId" AS "visitorId"
+      FROM "analytics_events" e
+      WHERE ${whereClause}
+    ),
+    durations AS (
+      SELECT
+        m."sessionId" AS "sessionId",
+        m."visitorId" AS "visitorId",
+        GREATEST(
+          0,
+          EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
+        ) AS duration_seconds
+      FROM matched m
+      JOIN "analytics_sessions" s
+        ON s."websiteId" = ${websiteId}
+       AND s."sessionId" = m."sessionId"
+    )
+    SELECT
+      COUNT(*) AS total_sessions,
+      COUNT(DISTINCT "visitorId") AS total_visitors,
+      SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+      SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+      SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+      SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions,
+      COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS lt1_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds < 3 THEN "visitorId" END) AS lt3_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS ge5_visitors,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS ge10_visitors
+    FROM durations
+  `) as SummaryRow[];
+
+  const summaryRow = summaryRows[0];
+  const summary = summaryRow
+    ? {
+        totalSessions: Number(summaryRow.total_sessions ?? 0),
+        totalVisitors: Number(summaryRow.total_visitors ?? 0),
+        longSessions: {
+          lt1: Number(summaryRow.lt1_sessions ?? 0),
+          lt3: Number(summaryRow.lt3_sessions ?? 0),
+          ge5: Number(summaryRow.ge5_sessions ?? 0),
+          ge10: Number(summaryRow.ge10_sessions ?? 0),
+        },
+        longVisitors: {
+          lt1: Number(summaryRow.lt1_visitors ?? 0),
+          lt3: Number(summaryRow.lt3_visitors ?? 0),
+          ge5: Number(summaryRow.ge5_visitors ?? 0),
+          ge10: Number(summaryRow.ge10_visitors ?? 0),
+        },
+        longShare: {
+          lt1: summaryRow.total_sessions
+            ? Math.round(
+                (Number(summaryRow.lt1_sessions ?? 0) /
+                  Number(summaryRow.total_sessions)) *
+                  100
+              )
+            : 0,
+          lt3: summaryRow.total_sessions
+            ? Math.round(
+                (Number(summaryRow.lt3_sessions ?? 0) /
+                  Number(summaryRow.total_sessions)) *
+                  100
+              )
+            : 0,
+          ge5: summaryRow.total_sessions
+            ? Math.round(
+                (Number(summaryRow.ge5_sessions ?? 0) /
+                  Number(summaryRow.total_sessions)) *
+                  100
+              )
+            : 0,
+          ge10: summaryRow.total_sessions
+            ? Math.round(
+                (Number(summaryRow.ge10_sessions ?? 0) /
+                  Number(summaryRow.total_sessions)) *
+                  100
+              )
+            : 0,
+        },
+      }
+    : null;
+
   return NextResponse.json({
     sources: rows.map((row) => ({
       sourceWebsiteId: row.source_website_id,
@@ -218,6 +316,7 @@ export async function GET(request: Request) {
           : 0,
       },
     })),
+    summary,
     thresholds: ["lt1", "lt3", "ge5", "ge10"],
     popcentOnly,
   });

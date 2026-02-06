@@ -38,6 +38,13 @@ type LandingResult = {
   device: BreakdownRow[];
   browser: BreakdownRow[];
   combos: BreakdownRow[];
+  summary?: {
+    totalSessions: number;
+    totalVisitors: number;
+    longSessions: Record<string, number>;
+    longVisitors: Record<string, number>;
+    longShare: Record<string, number>;
+  } | null;
 };
 
 const formatDateInput = (date: Date) => date.toISOString().split("T")[0];
@@ -262,6 +269,7 @@ export default function SourceAnalysisPage() {
 
           results[item.id] = {
             sources: payload.sources ?? [],
+            summary: payload.summary ?? null,
             device: breakdownPayload.device ?? [],
             browser: breakdownPayload.browser ?? [],
             combos: breakdownPayload.combos ?? [],
@@ -555,26 +563,31 @@ export default function SourceAnalysisPage() {
           {landingItems.map((item) => {
             const result = landingResults[item.id];
             const sources = result?.sources ?? [];
-            const totalSessions = sources.reduce(
-              (sum, row) => sum + (row.totalSessions ?? 0),
-              0
-            );
-            const totalVisitors = sources.reduce(
-              (sum, row) => sum + (row.totalVisitors ?? 0),
-              0
-            );
+            const summary = result?.summary;
+            const totalSessions =
+              summary?.totalSessions ??
+              sources.reduce((sum, row) => sum + (row.totalSessions ?? 0), 0);
+            const totalVisitors =
+              summary?.totalVisitors ??
+              sources.reduce((sum, row) => sum + (row.totalVisitors ?? 0), 0);
             const thresholdStats = thresholds.map((threshold) => {
-              const longSessions = sources.reduce(
-                (sum, row) => sum + (row.longSessions?.[threshold.key] ?? 0),
-                0
-              );
-              const longVisitors = sources.reduce(
-                (sum, row) => sum + (row.longVisitors?.[threshold.key] ?? 0),
-                0
-              );
-              const share = totalSessions
-                ? Math.round((longSessions / totalSessions) * 100)
-                : 0;
+              const longSessions =
+                summary?.longSessions?.[threshold.key] ??
+                sources.reduce(
+                  (sum, row) => sum + (row.longSessions?.[threshold.key] ?? 0),
+                  0
+                );
+              const longVisitors =
+                summary?.longVisitors?.[threshold.key] ??
+                sources.reduce(
+                  (sum, row) => sum + (row.longVisitors?.[threshold.key] ?? 0),
+                  0
+                );
+              const share =
+                summary?.longShare?.[threshold.key] ??
+                (totalSessions
+                  ? Math.round((longSessions / totalSessions) * 100)
+                  : 0);
               return { threshold, longSessions, longVisitors, share };
             });
 
