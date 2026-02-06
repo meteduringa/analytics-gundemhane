@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   }
 
   const dayDate = parseDayParam(dateParam) ?? new Date();
-  const { dayString, start } = getIstanbulDayRange(dayDate);
+  const { dayString, start, end } = getIstanbulDayRange(dayDate);
   const existing = await prisma.analyticsDailySimple.findUnique({
     where: {
       siteId_day: {
