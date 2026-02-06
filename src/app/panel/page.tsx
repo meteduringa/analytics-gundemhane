@@ -35,6 +35,8 @@ const PanelPage = () => {
     daily_direct_unique_users: number;
     daily_pageviews: number;
     daily_avg_time_on_site_seconds_per_unique: number;
+    daily_popcent_unique_users?: number;
+    daily_popcent_pageviews?: number;
   } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -189,6 +191,23 @@ const PanelPage = () => {
             detail="Tekil başına ortalama"
             accent="text-rose-600"
             tone="bg-rose-50"
+          />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+          <StatsCard
+            title="Popcent Tekil"
+            value={`${metrics?.daily_popcent_unique_users ?? 0}`}
+            detail="Seçilen gün (tekil)"
+            accent="text-amber-700"
+            tone="bg-amber-50"
+          />
+          <StatsCard
+            title="Popcent Pageview"
+            value={`${metrics?.daily_popcent_pageviews ?? 0}`}
+            detail="Seçilen gün (toplam)"
+            accent="text-orange-700"
+            tone="bg-orange-50"
           />
         </div>
       </div>
