@@ -76,6 +76,25 @@ const normalizeLandingInput = (value: string) => {
   }
 };
 
+const normalizeDateInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const dotMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(trimmed);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+  const slashMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+  return "";
+};
+
 export default function SourceAnalysisPage() {
   const router = useRouter();
   const storageKey = "source_analysis_state_v1";
@@ -149,8 +168,14 @@ export default function SourceAnalysisPage() {
           pcAutoAdd?: boolean;
         };
         if (saved.selectedSiteId) setSelectedSiteId(saved.selectedSiteId);
-        if (saved.startDate) setStartDate(saved.startDate);
-        if (saved.endDate) setEndDate(saved.endDate);
+        if (saved.startDate) {
+          const normalized = normalizeDateInput(saved.startDate);
+          if (normalized) setStartDate(normalized);
+        }
+        if (saved.endDate) {
+          const normalized = normalizeDateInput(saved.endDate);
+          if (normalized) setEndDate(normalized);
+        }
         if (typeof saved.categoryName === "string")
           setCategoryName(saved.categoryName);
         if (typeof saved.popcentOnly === "boolean")
