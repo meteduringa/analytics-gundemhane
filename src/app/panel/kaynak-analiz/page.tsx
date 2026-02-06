@@ -137,7 +137,7 @@ export default function SourceAnalysisPage() {
           endDate?: string;
           categoryName?: string;
           popcentOnly?: boolean;
-          landingItems?: LandingItem[];
+          landingItemsBySite?: Record<string, LandingItem[]>;
           showBestComboOnly?: boolean;
           pcTargetUrl?: string;
           pcCategory?: string;
@@ -150,8 +150,6 @@ export default function SourceAnalysisPage() {
           setCategoryName(saved.categoryName);
         if (typeof saved.popcentOnly === "boolean")
           setPopcentOnly(saved.popcentOnly);
-        if (Array.isArray(saved.landingItems))
-          setLandingItems(saved.landingItems);
         if (typeof saved.showBestComboOnly === "boolean")
           setShowBestComboOnly(saved.showBestComboOnly);
         if (typeof saved.pcTargetUrl === "string")
@@ -160,6 +158,10 @@ export default function SourceAnalysisPage() {
           setPcCategory(saved.pcCategory);
         if (typeof saved.pcAutoAdd === "boolean")
           setPcAutoAdd(saved.pcAutoAdd);
+        if (saved.selectedSiteId && saved.landingItemsBySite) {
+          const items = saved.landingItemsBySite[saved.selectedSiteId] ?? [];
+          setLandingItems(items);
+        }
       } catch {
         // ignore corrupted storage
       }
@@ -169,14 +171,38 @@ export default function SourceAnalysisPage() {
   }, [router]);
 
   useEffect(() => {
+    if (!ready) return;
+    if (!selectedSiteId) return;
+    if (!landingItems.length) return;
+    if (Object.keys(landingResults).length) return;
+    void loadSources();
+  }, [ready, selectedSiteId, landingItems, landingResults]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
+    const existingRaw = window.localStorage.getItem(storageKey);
+    let landingItemsBySite: Record<string, LandingItem[]> = {};
+    if (existingRaw) {
+      try {
+        const existing = JSON.parse(existingRaw) as {
+          landingItemsBySite?: Record<string, LandingItem[]>;
+        };
+        landingItemsBySite = existing.landingItemsBySite ?? {};
+      } catch {
+        landingItemsBySite = {};
+      }
+    }
+    if (selectedSiteId) {
+      landingItemsBySite[selectedSiteId] = landingItems;
+    }
+
     const payload = {
       selectedSiteId,
       startDate,
       endDate,
       categoryName,
       popcentOnly,
-      landingItems,
+      landingItemsBySite,
       showBestComboOnly,
       pcTargetUrl,
       pcCategory,
@@ -195,6 +221,23 @@ export default function SourceAnalysisPage() {
     pcCategory,
     pcAutoAdd,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!selectedSiteId) return;
+    const rawState = window.localStorage.getItem(storageKey);
+    if (!rawState) return;
+    try {
+      const saved = JSON.parse(rawState) as {
+        landingItemsBySite?: Record<string, LandingItem[]>;
+      };
+      const items = saved.landingItemsBySite?.[selectedSiteId] ?? [];
+      setLandingItems(items);
+      setLandingResults({});
+    } catch {
+      // ignore
+    }
+  }, [selectedSiteId]);
 
   useEffect(() => {
     const loadSites = async () => {
