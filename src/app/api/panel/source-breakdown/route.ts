@@ -65,6 +65,7 @@ export async function GET(request: Request) {
   const endValue = searchParams.get("end");
   const landingUrlRaw = searchParams.get("landingUrl");
   const minSeconds = Math.max(1, Number(searchParams.get("minSeconds") ?? 1));
+  const popcentOnly = searchParams.get("popcentOnly") !== "0";
 
   if (!websiteId) {
     return NextResponse.json(
@@ -112,14 +113,19 @@ export async function GET(request: Request) {
     Prisma.sql`e."type" = 'PAGEVIEW'`,
     Prisma.sql`e."mode" = 'RAW'`,
     Prisma.sql`e."url" = ${landingUrl}`,
-    Prisma.sql`
-      (
-        (e."eventData"->>'source_website_id' IS NOT NULL AND e."eventData"->>'source_website_id' <> '')
-        OR
-        (COALESCE(NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\\\1'), ''), '') IN (${popcentHostList}))
-      )
-    `,
   ];
+
+  if (popcentOnly) {
+    conditions.push(
+      Prisma.sql`
+        (
+          (e."eventData"->>'source_website_id' IS NOT NULL AND e."eventData"->>'source_website_id' <> '')
+          OR
+          (COALESCE(NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), ''), '') IN (${popcentHostList}))
+        )
+      `
+    );
+  }
 
   if (startTs) {
     conditions.push(
@@ -229,6 +235,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     minSeconds,
+    popcentOnly,
     device,
     browser,
   });
