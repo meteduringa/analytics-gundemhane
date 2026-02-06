@@ -301,7 +301,7 @@ export default function SourceAnalysisPage() {
     }
     try {
       const parsed = new URL(pcTargetUrl.trim());
-      const base = `${window.location.origin}/api/pc`;
+      const base = `${window.location.origin}/api/relay`;
       const params = new URLSearchParams({
         target: parsed.toString(),
       });

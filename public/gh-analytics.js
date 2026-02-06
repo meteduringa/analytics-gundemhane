@@ -12,6 +12,8 @@
     const sessionKey = "gh_analytics_session_id";
     const lastSeenKey = "gh_analytics_last_seen";
     const sessionTimeoutMs = 30 * 60 * 1000;
+    const pcMetaKey = "gh_pc_meta_v1";
+    const pcMetaTtlMs = 24 * 60 * 60 * 1000;
 
     const uuid = () =>
       "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
@@ -42,6 +44,10 @@
     };
 
     const sendPayload = (payload) => {
+      updatePcMetaFromLocation();
+      const pcMeta = getStoredPcMeta();
+      if (pcMeta?.pc_source) payload.pc_source = pcMeta.pc_source;
+      if (pcMeta?.pc_cat) payload.pc_cat = pcMeta.pc_cat;
       payload.website_id = websiteId;
       payload.visitor_id = getVisitorId();
       payload.session_id = getSessionId();
@@ -80,6 +86,98 @@
     };
 
     window.trackEvent = trackEvent;
+
+    const safeJsonParse = (value) => {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    };
+
+    const decodeBase64Url = (value) => {
+      if (!value) return null;
+      try {
+        const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+        const padded =
+          normalized + "===".slice((normalized.length + 3) % 4);
+        return atob(padded);
+      } catch {
+        return null;
+      }
+    };
+
+    const decodePcToken = (token) => {
+      const decoded = decodeBase64Url(token);
+      if (!decoded) return null;
+      const parsed = safeJsonParse(decoded);
+      if (!parsed || typeof parsed.s !== "string" || !parsed.s) return null;
+      return {
+        pc_source: parsed.s,
+        pc_cat: typeof parsed.c === "string" && parsed.c ? parsed.c : null,
+      };
+    };
+
+    const readPcMetaFromHash = () => {
+      const hash = location.hash.replace(/^#/, "");
+      if (!hash) return null;
+      const params = new URLSearchParams(hash);
+      const token = params.get("pc");
+      if (!token) return null;
+      const meta = decodePcToken(token);
+      if (!meta) return null;
+      params.delete("pc");
+      const nextHash = params.toString();
+      history.replaceState(
+        null,
+        "",
+        `${location.pathname}${location.search}${nextHash ? `#${nextHash}` : ""}`
+      );
+      return meta;
+    };
+
+    const readPcMetaFromQuery = () => {
+      const params = new URLSearchParams(location.search);
+      const pcSource = params.get("pc_source");
+      if (!pcSource) return null;
+      return {
+        pc_source: pcSource,
+        pc_cat: params.get("pc_cat") || null,
+      };
+    };
+
+    const persistPcMeta = (meta) => {
+      try {
+        storage.setItem(
+          pcMetaKey,
+          JSON.stringify({ ...meta, ts: Date.now() })
+        );
+      } catch {}
+    };
+
+    const getStoredPcMeta = () => {
+      try {
+        const raw = storage.getItem(pcMetaKey);
+        if (!raw) return null;
+        const parsed = safeJsonParse(raw);
+        if (!parsed || typeof parsed.pc_source !== "string") return null;
+        if (parsed.ts && Date.now() - parsed.ts > pcMetaTtlMs) return null;
+        return {
+          pc_source: parsed.pc_source,
+          pc_cat:
+            typeof parsed.pc_cat === "string" && parsed.pc_cat
+              ? parsed.pc_cat
+              : null,
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const updatePcMetaFromLocation = () => {
+      const meta = readPcMetaFromHash() || readPcMetaFromQuery();
+      if (meta) persistPcMeta(meta);
+    };
 
     let lastUrl = `${location.pathname}${location.search}`;
     const handleRouteChange = () => {

@@ -219,16 +219,24 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       typeof payload.event_data === "string"
         ? JSON.parse(payload.event_data)
         : payload.event_data ?? undefined;
+    const payloadPcSource =
+      asString(payload.pc_source) ??
+      (isPlainObject(eventData) ? asString(eventData.pc_source) : null);
+    const payloadPcCat =
+      asString(payload.pc_cat) ??
+      (isPlainObject(eventData) ? asString(eventData.pc_cat) : null);
     const enrichedEventData = (() => {
       const extra: Record<string, unknown> = {};
       if (sourceWebsiteId) {
         extra.source_website_id = sourceWebsiteId;
       }
-      if (popcentMeta.pc_source) {
-        extra.pc_source = popcentMeta.pc_source;
+      const finalPcSource = payloadPcSource ?? popcentMeta.pc_source;
+      const finalPcCat = payloadPcCat ?? popcentMeta.pc_cat;
+      if (finalPcSource) {
+        extra.pc_source = finalPcSource;
       }
-      if (popcentMeta.pc_cat) {
-        extra.pc_cat = popcentMeta.pc_cat;
+      if (finalPcCat) {
+        extra.pc_cat = finalPcCat;
       }
       if (!Object.keys(extra).length) {
         return eventData;
