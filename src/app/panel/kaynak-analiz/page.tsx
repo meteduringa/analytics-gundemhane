@@ -26,6 +26,20 @@ type BreakdownRow = {
   longShare: Record<number, number>;
 };
 
+type LandingItem = {
+  id: string;
+  label: string;
+  urlInput: string;
+  normalizedUrl: string;
+};
+
+type LandingResult = {
+  sources: SourceRow[];
+  device: BreakdownRow[];
+  browser: BreakdownRow[];
+  combos: BreakdownRow[];
+};
+
 const formatDateInput = (date: Date) => date.toISOString().split("T")[0];
 
 const daysAgo = (days: number) => {
@@ -65,13 +79,14 @@ export default function SourceAnalysisPage() {
     formatDateInput(daysAgo(7))
   );
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
-  const [landingUrl, setLandingUrl] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [popcentOnly, setPopcentOnly] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [sources, setSources] = useState<SourceRow[]>([]);
-  const [deviceBreakdown, setDeviceBreakdown] = useState<BreakdownRow[]>([]);
-  const [browserBreakdown, setBrowserBreakdown] = useState<BreakdownRow[]>([]);
+  const [landingInput, setLandingInput] = useState("");
+  const [landingItems, setLandingItems] = useState<LandingItem[]>([]);
+  const [landingResults, setLandingResults] = useState<
+    Record<string, LandingResult>
+  >({});
   const [error, setError] = useState("");
   const [copiedShort, setCopiedShort] = useState(false);
   const [copiedLong, setCopiedLong] = useState(false);
@@ -127,42 +142,80 @@ export default function SourceAnalysisPage() {
     [selectedSiteId, sites]
   );
 
+  const handleAddLanding = () => {
+    const normalizedLanding = normalizeLandingInput(landingInput);
+    if (!landingInput.trim()) {
+      setError("Haber URL zorunludur.");
+      return;
+    }
+    if (!normalizedLanding) {
+      setError("Haber URL geçersiz.");
+      return;
+    }
+    setError("");
+    const item: LandingItem = {
+      id: crypto.randomUUID(),
+      label: categoryName.trim(),
+      urlInput: landingInput.trim(),
+      normalizedUrl: normalizedLanding,
+    };
+    setLandingItems((prev) => [item, ...prev]);
+    setLandingInput("");
+  };
+
+  const handleRemoveLanding = (id: string) => {
+    setLandingItems((prev) => prev.filter((item) => item.id !== id));
+    setLandingResults((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
   const loadSources = async () => {
     if (!selectedSiteId) return;
     setIsLoading(true);
     setError("");
     try {
-      if (!landingUrl.trim()) {
-        throw new Error("Haber URL zorunludur.");
+      if (!landingItems.length) {
+        throw new Error("En az bir haber URL ekleyin.");
       }
-      const normalizedLanding = normalizeLandingInput(landingUrl);
-      if (!normalizedLanding) {
-        throw new Error("Haber URL geçersiz.");
-      }
-      const params = new URLSearchParams({
-        websiteId: selectedSiteId,
-        start: startDate,
-        end: endDate,
-        landingUrl: normalizedLanding,
-        popcentOnly: popcentOnly ? "1" : "0",
-      });
-      const response = await fetch(
-        `/api/panel/source-analysis?${params.toString()}`
-      );
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Analiz başarısız.");
-      }
-      setSources(payload.sources ?? []);
 
-      const breakdownResponse = await fetch(
-        `/api/panel/source-breakdown?${params.toString()}`
+      const results: Record<string, LandingResult> = {};
+
+      await Promise.all(
+        landingItems.map(async (item) => {
+          const params = new URLSearchParams({
+            websiteId: selectedSiteId,
+            start: startDate,
+            end: endDate,
+            landingUrl: item.normalizedUrl,
+            popcentOnly: popcentOnly ? "1" : "0",
+          });
+
+          const response = await fetch(
+            `/api/panel/source-analysis?${params.toString()}`
+          );
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error ?? "Analiz başarısız.");
+          }
+
+          const breakdownResponse = await fetch(
+            `/api/panel/source-breakdown?${params.toString()}`
+          );
+          const breakdownPayload = await breakdownResponse.json();
+
+          results[item.id] = {
+            sources: payload.sources ?? [],
+            device: breakdownPayload.device ?? [],
+            browser: breakdownPayload.browser ?? [],
+            combos: breakdownPayload.combos ?? [],
+          };
+        })
       );
-      const breakdownPayload = await breakdownResponse.json();
-      if (breakdownResponse.ok) {
-        setDeviceBreakdown(breakdownPayload.device ?? []);
-        setBrowserBreakdown(breakdownPayload.browser ?? []);
-      }
+
+      setLandingResults(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analiz başarısız.");
     } finally {
@@ -172,10 +225,12 @@ export default function SourceAnalysisPage() {
 
   const thresholds = [1, 3, 5, 10];
 
-  const handleCopy = async (threshold: number) => {
-    const list = sources.filter((row) => (row.longSessions?.[threshold] ?? 0) > 0);
-    if (!list.length) return;
-    const value = list.map((row) => row.sourceWebsiteId).join(", ");
+  const handleCopy = async (threshold: number, list: SourceRow[]) => {
+    const filtered = list.filter(
+      (row) => (row.longSessions?.[threshold] ?? 0) > 0
+    );
+    if (!filtered.length) return;
+    const value = filtered.map((row) => row.sourceWebsiteId).join(", ");
     try {
       await navigator.clipboard.writeText(value);
       if (threshold === 1) {
@@ -271,14 +326,22 @@ export default function SourceAnalysisPage() {
             </label>
 
             <label className="text-xs font-semibold text-slate-500">
-              Haber URL (zorunlu)
+              Haber URL (ekle)
               <input
-                value={landingUrl}
-                onChange={(event) => setLandingUrl(event.target.value)}
+                value={landingInput}
+                onChange={(event) => setLandingInput(event.target.value)}
                 placeholder="https://site.com/haber/ornek-baslik"
                 className="mt-2 w-full min-w-[220px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
               />
             </label>
+
+            <button
+              type="button"
+              onClick={handleAddLanding}
+              className="mb-1 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Ekle
+            </button>
 
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
               <input
@@ -301,6 +364,50 @@ export default function SourceAnalysisPage() {
           </div>
         </div>
 
+        {landingItems.length > 0 && (
+          <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                  Eklenen Haberler
+                </p>
+                <p className="text-xs text-slate-500">
+                  Analiz tüm eklenen haberler için aynı anda yapılır.
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-slate-500">
+                {landingItems.length} adet
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {landingItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-800">
+                      {item.urlInput}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Normalized: {item.normalizedUrl}
+                      {item.label ? ` · Etiket: ${item.label}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveLanding(item.id)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                  >
+                    Kaldır
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
@@ -322,79 +429,334 @@ export default function SourceAnalysisPage() {
             </p>
           </div>
 
-          <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {thresholds.map((threshold) => {
-              const list = sources
-                .filter((row) => (row.longSessions?.[threshold] ?? 0) > 0)
-                .sort(
-                  (a, b) =>
-                    (b.longSessions?.[threshold] ?? 0) -
-                    (a.longSessions?.[threshold] ?? 0)
-                );
-              const copied =
-                (threshold === 1 && copiedShort) ||
-                (threshold === 3 && copiedLong);
-              return (
-                <div
-                  key={threshold}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="flex items-center justify-between">
+          {landingItems.length === 0 && (
+            <div className="mt-6 text-sm text-slate-500">
+              Analiz için en az bir haber URL ekleyin.
+            </div>
+          )}
+
+          {landingItems.map((item) => {
+            const result = landingResults[item.id];
+            const sources = result?.sources ?? [];
+            const totalSessions = sources.reduce(
+              (sum, row) => sum + (row.totalSessions ?? 0),
+              0
+            );
+            const totalVisitors = sources.reduce(
+              (sum, row) => sum + (row.totalVisitors ?? 0),
+              0
+            );
+            const thresholdStats = thresholds.map((threshold) => {
+              const longSessions = sources.reduce(
+                (sum, row) => sum + (row.longSessions?.[threshold] ?? 0),
+                0
+              );
+              const longVisitors = sources.reduce(
+                (sum, row) => sum + (row.longVisitors?.[threshold] ?? 0),
+                0
+              );
+              const share = totalSessions
+                ? Math.round((longSessions / totalSessions) * 100)
+                : 0;
+              return { threshold, longSessions, longVisitors, share };
+            });
+
+            return (
+              <div key={item.id} className="mt-6 space-y-6">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                        {threshold}+ Saniye
+                        Haber
                       </p>
                       <h3 className="text-sm font-semibold text-slate-800">
-                        Beyaz Liste Adayları
+                        {item.urlInput}
                       </h3>
+                      <p className="text-xs text-slate-500">
+                        Etiket: {item.label || "—"}
+                      </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(threshold)}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
-                      disabled={!list.length}
-                    >
-                      {copied ? "Kopyalandı" : "ID'leri Kopyala"}
-                    </button>
+                    <div className="text-xs text-slate-500">
+                      Toplam Session:{" "}
+                      <span className="font-semibold text-slate-700">
+                        {totalSessions}
+                      </span>{" "}
+                      · Toplam Ziyaretçi:{" "}
+                      <span className="font-semibold text-slate-700">
+                        {totalVisitors}
+                      </span>
+                    </div>
                   </div>
 
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    {thresholdStats.map((stat) => (
+                      <div
+                        key={stat.threshold}
+                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600"
+                      >
+                        <p className="text-[11px] font-semibold uppercase text-slate-400">
+                          {stat.threshold}+ sn
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">
+                          {stat.share}%
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Session: {stat.longSessions} · Ziyaretçi:{" "}
+                          {stat.longVisitors}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+                  {thresholds.map((threshold) => {
+                    const list = sources
+                      .filter(
+                        (row) => (row.longSessions?.[threshold] ?? 0) > 0
+                      )
+                      .sort(
+                        (a, b) =>
+                          (b.longSessions?.[threshold] ?? 0) -
+                          (a.longSessions?.[threshold] ?? 0)
+                      );
+                    const copied =
+                      (threshold === 1 && copiedShort) ||
+                      (threshold === 3 && copiedLong);
+                    return (
+                      <div
+                        key={`${item.id}-${threshold}`}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                              {threshold}+ Saniye
+                            </p>
+                            <h3 className="text-sm font-semibold text-slate-800">
+                              Beyaz Liste Adayları
+                            </h3>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(threshold, sources)}
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                            disabled={!list.length}
+                          >
+                            {copied ? "Kopyalandı" : "ID'leri Kopyala"}
+                          </button>
+                        </div>
+
+                        <div className="mt-4 overflow-x-auto">
+                          <table className="min-w-full text-left text-xs text-slate-600">
+                            <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                              <tr>
+                                <th className="px-3 py-2">Website ID</th>
+                                <th className="px-3 py-2">Session</th>
+                                <th className="px-3 py-2">Ziyaretçi</th>
+                                <th className="px-3 py-2">Oran %</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {list.length === 0 && (
+                                <tr>
+                                  <td
+                                    colSpan={4}
+                                    className="px-3 py-6 text-center text-slate-400"
+                                  >
+                                    Sonuç bulunamadı.
+                                  </td>
+                                </tr>
+                              )}
+                              {list.map((row) => (
+                                <tr
+                                  key={`${item.id}-${threshold}-${row.sourceWebsiteId}`}
+                                  className="border-b border-slate-100"
+                                >
+                                  <td className="px-3 py-2 font-semibold text-slate-800">
+                                    {row.sourceWebsiteId}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {row.longSessions?.[threshold] ?? 0}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {row.longVisitors?.[threshold] ?? 0}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {row.longShare?.[threshold] ?? 0}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="text-sm font-semibold text-slate-800">
+                      Cihaz Kırılımı
+                    </h3>
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="min-w-full text-left text-xs text-slate-600">
+                        <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2">Cihaz</th>
+                            <th className="px-3 py-2">Session</th>
+                            <th className="px-3 py-2">1+ sn %</th>
+                            <th className="px-3 py-2">3+ sn %</th>
+                            <th className="px-3 py-2">5+ sn %</th>
+                            <th className="px-3 py-2">10+ sn %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(result?.device ?? []).length === 0 && (
+                            <tr>
+                              <td
+                                colSpan={6}
+                                className="px-3 py-6 text-center text-slate-400"
+                              >
+                                Sonuç bulunamadı.
+                              </td>
+                            </tr>
+                          )}
+                          {(result?.device ?? []).map((row) => (
+                            <tr
+                              key={`${item.id}-device-${row.label}`}
+                              className="border-b border-slate-100"
+                            >
+                              <td className="px-3 py-2 font-semibold text-slate-800">
+                                {row.label}
+                              </td>
+                              <td className="px-3 py-2">{row.totalSessions}</td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[1] ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[3] ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[5] ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[10] ?? 0}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="text-sm font-semibold text-slate-800">
+                      Tarayıcı Kırılımı
+                    </h3>
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="min-w-full text-left text-xs text-slate-600">
+                        <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2">Tarayıcı</th>
+                            <th className="px-3 py-2">Session</th>
+                            <th className="px-3 py-2">1+ sn %</th>
+                            <th className="px-3 py-2">3+ sn %</th>
+                            <th className="px-3 py-2">5+ sn %</th>
+                            <th className="px-3 py-2">10+ sn %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(result?.browser ?? []).length === 0 && (
+                            <tr>
+                              <td
+                                colSpan={6}
+                                className="px-3 py-6 text-center text-slate-400"
+                              >
+                                Sonuç bulunamadı.
+                              </td>
+                            </tr>
+                          )}
+                          {(result?.browser ?? []).map((row) => (
+                            <tr
+                              key={`${item.id}-browser-${row.label}`}
+                              className="border-b border-slate-100"
+                            >
+                              <td className="px-3 py-2 font-semibold text-slate-800">
+                                {row.label}
+                              </td>
+                              <td className="px-3 py-2">{row.totalSessions}</td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[1] ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[3] ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[5] ?? 0}
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.longShare?.[10] ?? 0}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Kombinasyon (Cihaz + Tarayıcı)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Etiket: {item.label || "—"}
+                  </p>
                   <div className="mt-4 overflow-x-auto">
                     <table className="min-w-full text-left text-xs text-slate-600">
                       <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="px-3 py-2">Website ID</th>
+                          <th className="px-3 py-2">Kombinasyon</th>
                           <th className="px-3 py-2">Session</th>
-                          <th className="px-3 py-2">Ziyaretçi</th>
-                          <th className="px-3 py-2">Oran %</th>
+                          <th className="px-3 py-2">1+ sn %</th>
+                          <th className="px-3 py-2">3+ sn %</th>
+                          <th className="px-3 py-2">5+ sn %</th>
+                          <th className="px-3 py-2">10+ sn %</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {list.length === 0 && (
+                        {(result?.combos ?? []).length === 0 && (
                           <tr>
                             <td
-                              colSpan={4}
+                              colSpan={6}
                               className="px-3 py-6 text-center text-slate-400"
                             >
                               Sonuç bulunamadı.
                             </td>
                           </tr>
                         )}
-                        {list.map((row) => (
+                        {(result?.combos ?? []).map((row) => (
                           <tr
-                            key={`${threshold}-${row.sourceWebsiteId}`}
+                            key={`${item.id}-combo-${row.label}`}
                             className="border-b border-slate-100"
                           >
                             <td className="px-3 py-2 font-semibold text-slate-800">
-                              {row.sourceWebsiteId}
+                              {row.label.replace("|", " + ")}
+                            </td>
+                            <td className="px-3 py-2">{row.totalSessions}</td>
+                            <td className="px-3 py-2">
+                              {row.longShare?.[1] ?? 0}
                             </td>
                             <td className="px-3 py-2">
-                              {row.longSessions?.[threshold] ?? 0}
+                              {row.longShare?.[3] ?? 0}
                             </td>
                             <td className="px-3 py-2">
-                              {row.longVisitors?.[threshold] ?? 0}
+                              {row.longShare?.[5] ?? 0}
                             </td>
                             <td className="px-3 py-2">
-                              {row.longShare?.[threshold] ?? 0}
+                              {row.longShare?.[10] ?? 0}
                             </td>
                           </tr>
                         ))}
@@ -402,9 +764,9 @@ export default function SourceAnalysisPage() {
                     </table>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </section>
 
         <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
@@ -420,104 +782,8 @@ export default function SourceAnalysisPage() {
             </p>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold text-slate-800">
-                Cihaz Kırılımı
-              </h3>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-left text-xs text-slate-600">
-                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Cihaz</th>
-                      <th className="px-3 py-2">Session</th>
-                      <th className="px-3 py-2">1+ sn %</th>
-                      <th className="px-3 py-2">3+ sn %</th>
-                      <th className="px-3 py-2">5+ sn %</th>
-                      <th className="px-3 py-2">10+ sn %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deviceBreakdown.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-3 py-6 text-center text-slate-400"
-                        >
-                          Sonuç bulunamadı.
-                        </td>
-                      </tr>
-                    )}
-                    {deviceBreakdown.map((row) => (
-                      <tr
-                        key={row.label}
-                        className="border-b border-slate-100"
-                      >
-                        <td className="px-3 py-2 font-semibold text-slate-800">
-                          {row.label}
-                        </td>
-                        <td className="px-3 py-2">{row.totalSessions}</td>
-                        <td className="px-3 py-2">{row.longShare?.[1] ?? 0}</td>
-                        <td className="px-3 py-2">{row.longShare?.[3] ?? 0}</td>
-                        <td className="px-3 py-2">{row.longShare?.[5] ?? 0}</td>
-                        <td className="px-3 py-2">
-                          {row.longShare?.[10] ?? 0}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold text-slate-800">
-                Tarayıcı Kırılımı
-              </h3>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-left text-xs text-slate-600">
-                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Tarayıcı</th>
-                      <th className="px-3 py-2">Session</th>
-                      <th className="px-3 py-2">1+ sn %</th>
-                      <th className="px-3 py-2">3+ sn %</th>
-                      <th className="px-3 py-2">5+ sn %</th>
-                      <th className="px-3 py-2">10+ sn %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {browserBreakdown.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-3 py-6 text-center text-slate-400"
-                        >
-                          Sonuç bulunamadı.
-                        </td>
-                      </tr>
-                    )}
-                    {browserBreakdown.map((row) => (
-                      <tr
-                        key={row.label}
-                        className="border-b border-slate-100"
-                      >
-                        <td className="px-3 py-2 font-semibold text-slate-800">
-                          {row.label}
-                        </td>
-                        <td className="px-3 py-2">{row.totalSessions}</td>
-                        <td className="px-3 py-2">{row.longShare?.[1] ?? 0}</td>
-                        <td className="px-3 py-2">{row.longShare?.[3] ?? 0}</td>
-                        <td className="px-3 py-2">{row.longShare?.[5] ?? 0}</td>
-                        <td className="px-3 py-2">
-                          {row.longShare?.[10] ?? 0}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          <div className="mt-6 text-sm text-slate-500">
+            Kırılımlar haber bazlı olarak yukarıda listelenir.
           </div>
         </section>
       </div>

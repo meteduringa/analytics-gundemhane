@@ -209,6 +209,15 @@ export async function GET(request: Request) {
            SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10
     FROM classified
     GROUP BY browser
+    UNION ALL
+    SELECT 'combo:' || device || '|' || browser AS key,
+           COUNT(*) AS total_sessions,
+           SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
+           SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
+           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
+           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10
+    FROM classified
+    GROUP BY device, browser
   `) as BreakdownRow[];
 
   const device = rows
@@ -259,10 +268,35 @@ export async function GET(request: Request) {
     })
     .sort((a, b) => b.longShare[3] - a.longShare[3]);
 
+  const combos = rows
+    .filter((row) => row.key.startsWith("combo:"))
+    .map((row) => {
+      const label = row.key.replace("combo:", "");
+      const total = Number(row.total_sessions ?? 0);
+      return {
+        label,
+        totalSessions: total,
+        longSessions: {
+          1: Number(row.long_sessions_1 ?? 0),
+          3: Number(row.long_sessions_3 ?? 0),
+          5: Number(row.long_sessions_5 ?? 0),
+          10: Number(row.long_sessions_10 ?? 0),
+        },
+        longShare: {
+          1: total ? Math.round((Number(row.long_sessions_1 ?? 0) / total) * 100) : 0,
+          3: total ? Math.round((Number(row.long_sessions_3 ?? 0) / total) * 100) : 0,
+          5: total ? Math.round((Number(row.long_sessions_5 ?? 0) / total) * 100) : 0,
+          10: total ? Math.round((Number(row.long_sessions_10 ?? 0) / total) * 100) : 0,
+        },
+      };
+    })
+    .sort((a, b) => b.longShare[3] - a.longShare[3]);
+
   return NextResponse.json({
     thresholds: [1, 3, 5, 10],
     popcentOnly,
     device,
     browser,
+    combos,
   });
 }
