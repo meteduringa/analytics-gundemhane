@@ -73,6 +73,7 @@ const normalizeLandingInput = (value: string) => {
 
 export default function SourceAnalysisPage() {
   const router = useRouter();
+  const storageKey = "source_analysis_state_v1";
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<{
     id: string;
@@ -126,9 +127,68 @@ export default function SourceAnalysisPage() {
       return;
     }
     setUser(parsed);
+    const rawState = window.localStorage.getItem(storageKey);
+    if (rawState) {
+      try {
+        const saved = JSON.parse(rawState) as {
+          selectedSiteId?: string;
+          startDate?: string;
+          endDate?: string;
+          categoryName?: string;
+          popcentOnly?: boolean;
+          landingItems?: LandingItem[];
+          showBestComboOnly?: boolean;
+          pcTargetUrl?: string;
+          pcCategory?: string;
+        };
+        if (saved.selectedSiteId) setSelectedSiteId(saved.selectedSiteId);
+        if (saved.startDate) setStartDate(saved.startDate);
+        if (saved.endDate) setEndDate(saved.endDate);
+        if (typeof saved.categoryName === "string")
+          setCategoryName(saved.categoryName);
+        if (typeof saved.popcentOnly === "boolean")
+          setPopcentOnly(saved.popcentOnly);
+        if (Array.isArray(saved.landingItems))
+          setLandingItems(saved.landingItems);
+        if (typeof saved.showBestComboOnly === "boolean")
+          setShowBestComboOnly(saved.showBestComboOnly);
+        if (typeof saved.pcTargetUrl === "string")
+          setPcTargetUrl(saved.pcTargetUrl);
+        if (typeof saved.pcCategory === "string")
+          setPcCategory(saved.pcCategory);
+      } catch {
+        // ignore corrupted storage
+      }
+    }
     const frame = window.requestAnimationFrame(() => setReady(true));
     return () => window.cancelAnimationFrame(frame);
   }, [router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const payload = {
+      selectedSiteId,
+      startDate,
+      endDate,
+      categoryName,
+      popcentOnly,
+      landingItems,
+      showBestComboOnly,
+      pcTargetUrl,
+      pcCategory,
+    };
+    window.localStorage.setItem(storageKey, JSON.stringify(payload));
+  }, [
+    selectedSiteId,
+    startDate,
+    endDate,
+    categoryName,
+    popcentOnly,
+    landingItems,
+    showBestComboOnly,
+    pcTargetUrl,
+    pcCategory,
+  ]);
 
   useEffect(() => {
     const loadSites = async () => {
