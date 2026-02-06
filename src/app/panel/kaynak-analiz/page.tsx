@@ -21,6 +21,13 @@ type SourceRow = {
   longShare: number;
 };
 
+type BreakdownRow = {
+  label: string;
+  totalSessions: number;
+  longSessions: number;
+  longShare: number;
+};
+
 const formatDateInput = (date: Date) => date.toISOString().split("T")[0];
 
 const daysAgo = (days: number) => {
@@ -62,8 +69,11 @@ export default function SourceAnalysisPage() {
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [landingUrl, setLandingUrl] = useState("");
   const [minSeconds, setMinSeconds] = useState("1");
+  const [categoryName, setCategoryName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sources, setSources] = useState<SourceRow[]>([]);
+  const [deviceBreakdown, setDeviceBreakdown] = useState<BreakdownRow[]>([]);
+  const [browserBreakdown, setBrowserBreakdown] = useState<BreakdownRow[]>([]);
   const [error, setError] = useState("");
   const [copiedShort, setCopiedShort] = useState(false);
   const [copiedLong, setCopiedLong] = useState(false);
@@ -146,6 +156,15 @@ export default function SourceAnalysisPage() {
         throw new Error(payload.error ?? "Analiz başarısız.");
       }
       setSources(payload.sources ?? []);
+
+      const breakdownResponse = await fetch(
+        `/api/panel/source-breakdown?${params.toString()}`
+      );
+      const breakdownPayload = await breakdownResponse.json();
+      if (breakdownResponse.ok) {
+        setDeviceBreakdown(breakdownPayload.device ?? []);
+        setBrowserBreakdown(breakdownPayload.browser ?? []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analiz başarısız.");
     } finally {
@@ -204,6 +223,12 @@ export default function SourceAnalysisPage() {
               <span className="font-semibold">{selectedSite.name}</span>
             </p>
           )}
+          {categoryName.trim() && (
+            <p className="text-sm text-slate-500">
+              Kategori etiketi:{" "}
+              <span className="font-semibold">{categoryName.trim()}</span>
+            </p>
+          )}
         </header>
 
         <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
@@ -222,6 +247,16 @@ export default function SourceAnalysisPage() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="text-xs font-semibold text-slate-500">
+              Kategori Etiketi (manuel)
+              <input
+                value={categoryName}
+                onChange={(event) => setCategoryName(event.target.value)}
+                placeholder="Örn: Oyun/İndirme"
+                className="mt-2 w-full min-w-[220px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              />
             </label>
 
             <label className="text-xs font-semibold text-slate-500">
@@ -264,6 +299,8 @@ export default function SourceAnalysisPage() {
                 <option value="1">1+ sn</option>
                 <option value="2">2+ sn</option>
                 <option value="3">3+ sn</option>
+                <option value="4">4+ sn</option>
+                <option value="5">5+ sn</option>
               </select>
             </label>
 
@@ -414,6 +451,104 @@ export default function SourceAnalysisPage() {
                         </td>
                         <td className="px-3 py-2">{row.longSessions}</td>
                         <td className="px-3 py-2">{row.longVisitors}</td>
+                        <td className="px-3 py-2">{row.longShare}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+              Kırılım
+            </p>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Cihaz ve Tarayıcı Performansı
+            </h2>
+            <p className="text-xs text-slate-500">
+              Seçilen süre eşiğine göre yüzde dağılımı gösterir.
+            </p>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-800">
+                Cihaz Kırılımı
+              </h3>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-xs text-slate-600">
+                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Cihaz</th>
+                      <th className="px-3 py-2">Session</th>
+                      <th className="px-3 py-2">{minSeconds}+ sn %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deviceBreakdown.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-3 py-6 text-center text-slate-400"
+                        >
+                          Sonuç bulunamadı.
+                        </td>
+                      </tr>
+                    )}
+                    {deviceBreakdown.map((row) => (
+                      <tr
+                        key={row.label}
+                        className="border-b border-slate-100"
+                      >
+                        <td className="px-3 py-2 font-semibold text-slate-800">
+                          {row.label}
+                        </td>
+                        <td className="px-3 py-2">{row.totalSessions}</td>
+                        <td className="px-3 py-2">{row.longShare}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-800">
+                Tarayıcı Kırılımı
+              </h3>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-xs text-slate-600">
+                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Tarayıcı</th>
+                      <th className="px-3 py-2">Session</th>
+                      <th className="px-3 py-2">{minSeconds}+ sn %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {browserBreakdown.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-3 py-6 text-center text-slate-400"
+                        >
+                          Sonuç bulunamadı.
+                        </td>
+                      </tr>
+                    )}
+                    {browserBreakdown.map((row) => (
+                      <tr
+                        key={row.label}
+                        className="border-b border-slate-100"
+                      >
+                        <td className="px-3 py-2 font-semibold text-slate-800">
+                          {row.label}
+                        </td>
+                        <td className="px-3 py-2">{row.totalSessions}</td>
                         <td className="px-3 py-2">{row.longShare}</td>
                       </tr>
                     ))}
