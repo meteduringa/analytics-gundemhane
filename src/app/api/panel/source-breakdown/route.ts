@@ -114,7 +114,7 @@ export async function GET(request: Request) {
     Prisma.sql`e."websiteId" = ${websiteId}`,
     Prisma.sql`e."type" = 'PAGEVIEW'`,
     Prisma.sql`e."mode" = 'RAW'`,
-    Prisma.sql`split_part(e."url", '?', 1) = ${landingPath}`,
+    Prisma.sql`rtrim(split_part(e."url", '?', 1), '/') = rtrim(${landingPath}, '/')`,
   ];
 
   if (popcentOnly) {
