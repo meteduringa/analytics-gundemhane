@@ -70,6 +70,7 @@ export default function SourceAnalysisPage() {
   const [landingUrl, setLandingUrl] = useState("");
   const [minSeconds, setMinSeconds] = useState("1");
   const [categoryName, setCategoryName] = useState("");
+  const [popcentOnly, setPopcentOnly] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [deviceBreakdown, setDeviceBreakdown] = useState<BreakdownRow[]>([]);
@@ -147,6 +148,7 @@ export default function SourceAnalysisPage() {
         end: endDate,
         landingUrl: normalizedLanding,
         minSeconds: minSeconds || "1",
+        popcentOnly: popcentOnly ? "1" : "0",
       });
       const response = await fetch(
         `/api/panel/source-analysis?${params.toString()}`
@@ -304,6 +306,16 @@ export default function SourceAnalysisPage() {
               </select>
             </label>
 
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <input
+                type="checkbox"
+                checked={popcentOnly}
+                onChange={(event) => setPopcentOnly(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-700"
+              />
+              Sadece Popcent
+            </label>
+
             <button
               type="button"
               onClick={loadSources}
@@ -330,7 +342,9 @@ export default function SourceAnalysisPage() {
               Popcent Kaynak Analizi (Haber Bazlı)
             </h2>
             <p className="text-xs text-slate-500">
-              Sadece Popcent kaynaklı (referrer veya source id bulunan) trafik listelenir.
+              {popcentOnly
+                ? "Sadece Popcent kaynaklı (referrer veya source id bulunan) trafik listelenir."
+                : "Tüm trafik listelenir. Kaynak yoksa [DIRECT] olarak görünür."}
             </p>
           </div>
 
