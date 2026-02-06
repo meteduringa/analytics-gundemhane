@@ -3,20 +3,44 @@
 import { Diamond, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, useEffect, useMemo, useState } from "react";
 
-const menuItems = [
+const baseMenuItems = [
   { label: "Anasayfa", href: "/panel" },
   { label: "Ziyaretçi (Anlık)", href: "/panel" },
   { label: "Ziyaretçi (Günlük)", href: "/panel" },
-  { label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
   { label: "Ayarlar", href: "/panel/ayarlar" },
 ];
+
+const adminOnlyItems = [{ label: "Kaynak Analizi", href: "/panel/kaynak-analiz" }];
 
 type LayoutProps = PropsWithChildren;
 
 const DashboardLayout = ({ children }: LayoutProps) => {
   const pathname = usePathname();
+  const [role, setRole] = useState<"ADMIN" | "CUSTOMER" | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rawUser = window.localStorage.getItem("user");
+    if (!rawUser) {
+      setRole(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(rawUser) as { role?: "ADMIN" | "CUSTOMER" };
+      setRole(parsed.role ?? null);
+    } catch {
+      setRole(null);
+    }
+  }, []);
+
+  const menuItems = useMemo(() => {
+    if (role === "ADMIN") {
+      return [...baseMenuItems, ...adminOnlyItems];
+    }
+    return baseMenuItems;
+  }, [role]);
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="sticky top-0 z-20">

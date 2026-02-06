@@ -194,22 +194,24 @@ const PanelPage = () => {
           />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
-          <StatsCard
-            title="Popcent Tekil"
-            value={`${metrics?.daily_popcent_unique_users ?? 0}`}
-            detail="Seçilen gün (tekil)"
-            accent="text-amber-700"
-            tone="bg-amber-50"
-          />
-          <StatsCard
-            title="Popcent Pageview"
-            value={`${metrics?.daily_popcent_pageviews ?? 0}`}
-            detail="Seçilen gün (toplam)"
-            accent="text-orange-700"
-            tone="bg-orange-50"
-          />
-        </div>
+        {user?.role === "ADMIN" && (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+            <StatsCard
+              title="Popcent Tekil"
+              value={`${metrics?.daily_popcent_unique_users ?? 0}`}
+              detail="Seçilen gün (tekil)"
+              accent="text-amber-700"
+              tone="bg-amber-50"
+            />
+            <StatsCard
+              title="Popcent Pageview"
+              value={`${metrics?.daily_popcent_pageviews ?? 0}`}
+              detail="Seçilen gün (toplam)"
+              accent="text-orange-700"
+              tone="bg-orange-50"
+            />
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );
