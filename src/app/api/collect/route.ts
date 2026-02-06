@@ -84,6 +84,18 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       return null;
     }
   };
+  const extractPopcentMeta = (value: string) => {
+    if (!value) return { pc_source: null, pc_cat: null };
+    try {
+      const parsed = new URL(value, "https://example.com");
+      return {
+        pc_source: parsed.searchParams.get("pc_source"),
+        pc_cat: parsed.searchParams.get("pc_cat"),
+      };
+    } catch {
+      return { pc_source: null, pc_cat: null };
+    }
+  };
   const isPlainObject = (value: unknown): value is Record<string, unknown> =>
     Boolean(value) && typeof value === "object" && !Array.isArray(value);
   const istanbulDayString = (date: Date) => {
@@ -164,6 +176,7 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       asString(payload.source_website_id) ??
       asString(payload.sourceWebsiteId) ??
       null;
+    const popcentMeta = extractPopcentMeta(url);
 
     const originHost =
       extractHostname(origin) ?? extractHostname(request.headers.get("referer"));
@@ -206,11 +219,25 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       typeof payload.event_data === "string"
         ? JSON.parse(payload.event_data)
         : payload.event_data ?? undefined;
-    const enrichedEventData = sourceWebsiteId
-      ? isPlainObject(eventData)
-        ? { ...eventData, source_website_id: sourceWebsiteId }
-        : { source_website_id: sourceWebsiteId }
-      : eventData;
+    const enrichedEventData = (() => {
+      const extra: Record<string, unknown> = {};
+      if (sourceWebsiteId) {
+        extra.source_website_id = sourceWebsiteId;
+      }
+      if (popcentMeta.pc_source) {
+        extra.pc_source = popcentMeta.pc_source;
+      }
+      if (popcentMeta.pc_cat) {
+        extra.pc_cat = popcentMeta.pc_cat;
+      }
+      if (!Object.keys(extra).length) {
+        return eventData;
+      }
+      if (isPlainObject(eventData)) {
+        return { ...eventData, ...extra };
+      }
+      return extra;
+    })();
     const strictHostname = asString(payload.hostname);
     const strictNormalizedUrl = isStrict ? normalizeStrictUrl(url) : url;
 

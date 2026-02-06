@@ -117,6 +117,8 @@ export async function GET(request: Request) {
   if (popcentOnly) {
     conditions.push(Prisma.sql`
       (
+        (e."eventData"->>'pc_source' = 'popcent')
+        OR
         (e."eventData"->>'source_website_id' IS NOT NULL AND e."eventData"->>'source_website_id' <> '')
         OR
         (COALESCE(NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), ''), '') IN (${popcentHostList}))
