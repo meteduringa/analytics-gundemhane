@@ -88,6 +88,10 @@ export default function SourceAnalysisPage() {
     Record<string, LandingResult>
   >({});
   const [showBestComboOnly, setShowBestComboOnly] = useState(true);
+  const [pcTargetUrl, setPcTargetUrl] = useState("");
+  const [pcCategory, setPcCategory] = useState("");
+  const [pcLink, setPcLink] = useState("");
+  const [pcCopied, setPcCopied] = useState(false);
   const [error, setError] = useState("");
   const [copiedShort, setCopiedShort] = useState(false);
   const [copiedLong, setCopiedLong] = useState(false);
@@ -162,6 +166,39 @@ export default function SourceAnalysisPage() {
     };
     setLandingItems((prev) => [item, ...prev]);
     setLandingInput("");
+  };
+
+  const handleBuildPcLink = () => {
+    if (!pcTargetUrl.trim()) {
+      setError("Popcent hedef URL zorunludur.");
+      return;
+    }
+    try {
+      const parsed = new URL(pcTargetUrl.trim());
+      const base = `${window.location.origin}/api/pc`;
+      const params = new URLSearchParams({
+        target: parsed.toString(),
+      });
+      if (pcCategory.trim()) {
+        params.set("cat", pcCategory.trim());
+      }
+      const link = `${base}?${params.toString()}`;
+      setPcLink(link);
+      setError("");
+    } catch {
+      setError("Popcent hedef URL geçersiz.");
+    }
+  };
+
+  const handleCopyPcLink = async () => {
+    if (!pcLink) return;
+    try {
+      await navigator.clipboard.writeText(pcLink);
+      setPcCopied(true);
+      window.setTimeout(() => setPcCopied(false), 1500);
+    } catch {
+      setPcCopied(false);
+    }
   };
 
   const handleRemoveLanding = (id: string) => {
@@ -435,6 +472,64 @@ export default function SourceAnalysisPage() {
             {error}
           </div>
         )}
+
+        <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+              Popcent Link
+            </p>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Popcent Link Oluşturucu
+            </h2>
+            <p className="text-xs text-slate-500">
+              Popcent’e vereceğin linki otomatik üretir. Bu link Popcent
+              trafiğini garanti şekilde işaretler.
+            </p>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="text-xs font-semibold text-slate-500">
+              Hedef URL
+              <input
+                value={pcTargetUrl}
+                onChange={(event) => setPcTargetUrl(event.target.value)}
+                placeholder="https://www.gercekfethiye.com/..."
+                className="mt-2 w-full min-w-[260px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              />
+            </label>
+
+            <label className="text-xs font-semibold text-slate-500">
+              Kategori (opsiyonel)
+              <input
+                value={pcCategory}
+                onChange={(event) => setPcCategory(event.target.value)}
+                placeholder="Örn: genel"
+                className="mt-2 w-full min-w-[180px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleBuildPcLink}
+              className="mb-1 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Link Oluştur
+            </button>
+          </div>
+
+          {pcLink && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+              <span className="break-all">{pcLink}</span>
+              <button
+                type="button"
+                onClick={handleCopyPcLink}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+              >
+                {pcCopied ? "Kopyalandı" : "Kopyala"}
+              </button>
+            </div>
+          )}
+        </section>
 
         <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
           <div className="space-y-1">
