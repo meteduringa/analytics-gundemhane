@@ -46,7 +46,7 @@ const normalizeLandingUrl = (value: string | null) => {
   if (!value) return null;
   try {
     const parsed = new URL(value);
-    return `${parsed.pathname}${parsed.search}`;
+    return parsed.pathname;
   } catch {
     return value.trim();
   }
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   }
-  const landingUrl = normalizeLandingUrl(landingUrlRaw);
+  const landingPath = normalizeLandingUrl(landingUrlRaw);
 
   const popcentHostList = Prisma.join(
     POPCENT_REFERRER_HOSTS.map((host) => Prisma.sql`${host}`),
@@ -136,8 +136,10 @@ export async function GET(request: Request) {
       Prisma.sql`${createdAtLocal} <= to_timestamp(${endTs}, 'YYYY-MM-DD HH24:MI:SS')`
     );
   }
-  if (landingUrl) {
-    conditions.push(Prisma.sql`e."url" = ${landingUrl}`);
+  if (landingPath) {
+    conditions.push(
+      Prisma.sql`split_part(e."url", '?', 1) = ${landingPath}`
+    );
   }
 
   const whereClause = Prisma.join(conditions, " AND ");

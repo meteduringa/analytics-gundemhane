@@ -53,11 +53,11 @@ const normalizeLandingInput = (value: string) => {
   if (!trimmed) return "";
   try {
     const parsed = new URL(trimmed);
-    return `${parsed.pathname}${parsed.search}`;
+    return parsed.pathname;
   } catch {
     try {
       const parsed = new URL(trimmed, "https://example.com");
-      return `${parsed.pathname}${parsed.search}`;
+      return parsed.pathname;
     } catch {
       return "";
     }

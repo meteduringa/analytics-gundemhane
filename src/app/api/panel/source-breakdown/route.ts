@@ -35,7 +35,7 @@ const normalizeLandingUrl = (value: string | null) => {
   if (!value) return null;
   try {
     const parsed = new URL(value);
-    return `${parsed.pathname}${parsed.search}`;
+    return parsed.pathname;
   } catch {
     return value.trim();
   }
@@ -93,8 +93,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const landingUrl = normalizeLandingUrl(landingUrlRaw);
-  if (!landingUrl) {
+  const landingPath = normalizeLandingUrl(landingUrlRaw);
+  if (!landingPath) {
     return NextResponse.json(
       { error: "Haber URL zorunludur." },
       { status: 400 }
@@ -114,7 +114,7 @@ export async function GET(request: Request) {
     Prisma.sql`e."websiteId" = ${websiteId}`,
     Prisma.sql`e."type" = 'PAGEVIEW'`,
     Prisma.sql`e."mode" = 'RAW'`,
-    Prisma.sql`e."url" = ${landingUrl}`,
+    Prisma.sql`split_part(e."url", '?', 1) = ${landingPath}`,
   ];
 
   if (popcentOnly) {
