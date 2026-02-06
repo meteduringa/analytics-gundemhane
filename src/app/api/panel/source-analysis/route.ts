@@ -55,11 +55,15 @@ const normalizeLandingUrl = (value: string | null) => {
 type SourceRow = {
   source_website_id: string;
   total_sessions: bigint;
-  short_sessions: bigint;
-  long_sessions: bigint;
   total_visitors: bigint;
-  short_visitors: bigint;
-  long_visitors: bigint;
+  long_sessions_1: bigint;
+  long_sessions_3: bigint;
+  long_sessions_5: bigint;
+  long_sessions_10: bigint;
+  long_visitors_1: bigint;
+  long_visitors_3: bigint;
+  long_visitors_5: bigint;
+  long_visitors_10: bigint;
 };
 
 export async function GET(request: Request) {
@@ -68,7 +72,6 @@ export async function GET(request: Request) {
   const startValue = searchParams.get("start");
   const endValue = searchParams.get("end");
   const landingUrlRaw = searchParams.get("landingUrl");
-  const minSeconds = Math.max(1, Number(searchParams.get("minSeconds") ?? 1));
   const popcentOnly = searchParams.get("popcentOnly") !== "0";
 
   if (!websiteId) {
@@ -164,14 +167,18 @@ export async function GET(request: Request) {
     SELECT
       source_website_id,
       COUNT(*) AS total_sessions,
-      SUM(CASE WHEN duration_seconds < ${minSeconds} THEN 1 ELSE 0 END) AS short_sessions,
-      SUM(CASE WHEN duration_seconds >= ${minSeconds} THEN 1 ELSE 0 END) AS long_sessions,
       COUNT(DISTINCT "visitorId") AS total_visitors,
-      COUNT(DISTINCT CASE WHEN duration_seconds < ${minSeconds} THEN "visitorId" END) AS short_visitors,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= ${minSeconds} THEN "visitorId" END) AS long_visitors
+      SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
+      SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
+      SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
+      SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 1 THEN "visitorId" END) AS long_visitors_1,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 3 THEN "visitorId" END) AS long_visitors_3,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS long_visitors_5,
+      COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS long_visitors_10
     FROM durations
     GROUP BY source_website_id
-    ORDER BY long_sessions DESC
+    ORDER BY long_sessions_3 DESC
     LIMIT 200
   `) as SourceRow[];
 
@@ -179,16 +186,35 @@ export async function GET(request: Request) {
     sources: rows.map((row) => ({
       sourceWebsiteId: row.source_website_id,
       totalSessions: Number(row.total_sessions ?? 0),
-      shortSessions: Number(row.short_sessions ?? 0),
-      longSessions: Number(row.long_sessions ?? 0),
       totalVisitors: Number(row.total_visitors ?? 0),
-      shortVisitors: Number(row.short_visitors ?? 0),
-      longVisitors: Number(row.long_visitors ?? 0),
-      longShare: row.total_sessions
-        ? Math.round((Number(row.long_sessions ?? 0) / Number(row.total_sessions)) * 100)
-        : 0,
+      longSessions: {
+        1: Number(row.long_sessions_1 ?? 0),
+        3: Number(row.long_sessions_3 ?? 0),
+        5: Number(row.long_sessions_5 ?? 0),
+        10: Number(row.long_sessions_10 ?? 0),
+      },
+      longVisitors: {
+        1: Number(row.long_visitors_1 ?? 0),
+        3: Number(row.long_visitors_3 ?? 0),
+        5: Number(row.long_visitors_5 ?? 0),
+        10: Number(row.long_visitors_10 ?? 0),
+      },
+      longShare: {
+        1: row.total_sessions
+          ? Math.round((Number(row.long_sessions_1 ?? 0) / Number(row.total_sessions)) * 100)
+          : 0,
+        3: row.total_sessions
+          ? Math.round((Number(row.long_sessions_3 ?? 0) / Number(row.total_sessions)) * 100)
+          : 0,
+        5: row.total_sessions
+          ? Math.round((Number(row.long_sessions_5 ?? 0) / Number(row.total_sessions)) * 100)
+          : 0,
+        10: row.total_sessions
+          ? Math.round((Number(row.long_sessions_10 ?? 0) / Number(row.total_sessions)) * 100)
+          : 0,
+      },
     })),
-    minSeconds,
+    thresholds: [1, 3, 5, 10],
     popcentOnly,
   });
 }

@@ -55,7 +55,10 @@ const POPCENT_REFERRER_HOSTS = [
 type BreakdownRow = {
   key: string;
   total_sessions: bigint;
-  long_sessions: bigint;
+  long_sessions_1: bigint;
+  long_sessions_3: bigint;
+  long_sessions_5: bigint;
+  long_sessions_10: bigint;
 };
 
 export async function GET(request: Request) {
@@ -64,7 +67,6 @@ export async function GET(request: Request) {
   const startValue = searchParams.get("start");
   const endValue = searchParams.get("end");
   const landingUrlRaw = searchParams.get("landingUrl");
-  const minSeconds = Math.max(1, Number(searchParams.get("minSeconds") ?? 1));
   const popcentOnly = searchParams.get("popcentOnly") !== "0";
 
   if (!websiteId) {
@@ -192,13 +194,19 @@ export async function GET(request: Request) {
     )
     SELECT 'device:' || device AS key,
            COUNT(*) AS total_sessions,
-           SUM(CASE WHEN duration_seconds >= ${minSeconds} THEN 1 ELSE 0 END) AS long_sessions
+           SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
+           SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
+           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
+           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10
     FROM classified
     GROUP BY device
     UNION ALL
     SELECT 'browser:' || browser AS key,
            COUNT(*) AS total_sessions,
-           SUM(CASE WHEN duration_seconds >= ${minSeconds} THEN 1 ELSE 0 END) AS long_sessions
+           SUM(CASE WHEN duration_seconds >= 1 THEN 1 ELSE 0 END) AS long_sessions_1,
+           SUM(CASE WHEN duration_seconds >= 3 THEN 1 ELSE 0 END) AS long_sessions_3,
+           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS long_sessions_5,
+           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS long_sessions_10
     FROM classified
     GROUP BY browser
   `) as BreakdownRow[];
@@ -208,33 +216,51 @@ export async function GET(request: Request) {
     .map((row) => {
       const label = row.key.replace("device:", "");
       const total = Number(row.total_sessions ?? 0);
-      const long = Number(row.long_sessions ?? 0);
       return {
         label,
         totalSessions: total,
-        longSessions: long,
-        longShare: total ? Math.round((long / total) * 100) : 0,
+        longSessions: {
+          1: Number(row.long_sessions_1 ?? 0),
+          3: Number(row.long_sessions_3 ?? 0),
+          5: Number(row.long_sessions_5 ?? 0),
+          10: Number(row.long_sessions_10 ?? 0),
+        },
+        longShare: {
+          1: total ? Math.round((Number(row.long_sessions_1 ?? 0) / total) * 100) : 0,
+          3: total ? Math.round((Number(row.long_sessions_3 ?? 0) / total) * 100) : 0,
+          5: total ? Math.round((Number(row.long_sessions_5 ?? 0) / total) * 100) : 0,
+          10: total ? Math.round((Number(row.long_sessions_10 ?? 0) / total) * 100) : 0,
+        },
       };
     })
-    .sort((a, b) => b.longShare - a.longShare);
+    .sort((a, b) => b.longShare[3] - a.longShare[3]);
 
   const browser = rows
     .filter((row) => row.key.startsWith("browser:"))
     .map((row) => {
       const label = row.key.replace("browser:", "");
       const total = Number(row.total_sessions ?? 0);
-      const long = Number(row.long_sessions ?? 0);
       return {
         label,
         totalSessions: total,
-        longSessions: long,
-        longShare: total ? Math.round((long / total) * 100) : 0,
+        longSessions: {
+          1: Number(row.long_sessions_1 ?? 0),
+          3: Number(row.long_sessions_3 ?? 0),
+          5: Number(row.long_sessions_5 ?? 0),
+          10: Number(row.long_sessions_10 ?? 0),
+        },
+        longShare: {
+          1: total ? Math.round((Number(row.long_sessions_1 ?? 0) / total) * 100) : 0,
+          3: total ? Math.round((Number(row.long_sessions_3 ?? 0) / total) * 100) : 0,
+          5: total ? Math.round((Number(row.long_sessions_5 ?? 0) / total) * 100) : 0,
+          10: total ? Math.round((Number(row.long_sessions_10 ?? 0) / total) * 100) : 0,
+        },
       };
     })
-    .sort((a, b) => b.longShare - a.longShare);
+    .sort((a, b) => b.longShare[3] - a.longShare[3]);
 
   return NextResponse.json({
-    minSeconds,
+    thresholds: [1, 3, 5, 10],
     popcentOnly,
     device,
     browser,

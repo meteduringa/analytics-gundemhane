@@ -13,19 +13,17 @@ type Site = {
 type SourceRow = {
   sourceWebsiteId: string;
   totalSessions: number;
-  shortSessions: number;
-  longSessions: number;
   totalVisitors: number;
-  shortVisitors: number;
-  longVisitors: number;
-  longShare: number;
+  longSessions: Record<number, number>;
+  longVisitors: Record<number, number>;
+  longShare: Record<number, number>;
 };
 
 type BreakdownRow = {
   label: string;
   totalSessions: number;
-  longSessions: number;
-  longShare: number;
+  longSessions: Record<number, number>;
+  longShare: Record<number, number>;
 };
 
 const formatDateInput = (date: Date) => date.toISOString().split("T")[0];
@@ -68,7 +66,6 @@ export default function SourceAnalysisPage() {
   );
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [landingUrl, setLandingUrl] = useState("");
-  const [minSeconds, setMinSeconds] = useState("1");
   const [categoryName, setCategoryName] = useState("");
   const [popcentOnly, setPopcentOnly] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -147,7 +144,6 @@ export default function SourceAnalysisPage() {
         start: startDate,
         end: endDate,
         landingUrl: normalizedLanding,
-        minSeconds: minSeconds || "1",
         popcentOnly: popcentOnly ? "1" : "0",
       });
       const response = await fetch(
@@ -174,32 +170,25 @@ export default function SourceAnalysisPage() {
     }
   };
 
-  const shortList = useMemo(
-    () => sources.filter((row) => row.shortSessions > 0),
-    [sources]
-  );
-  const longList = useMemo(
-    () => sources.filter((row) => row.longSessions > 0),
-    [sources]
-  );
+  const thresholds = [1, 3, 5, 10];
 
-  const handleCopy = async (mode: "short" | "long") => {
-    const list = mode === "short" ? shortList : longList;
+  const handleCopy = async (threshold: number) => {
+    const list = sources.filter((row) => (row.longSessions?.[threshold] ?? 0) > 0);
     if (!list.length) return;
     const value = list.map((row) => row.sourceWebsiteId).join(", ");
     try {
       await navigator.clipboard.writeText(value);
-      if (mode === "short") {
+      if (threshold === 1) {
         setCopiedShort(true);
         window.setTimeout(() => setCopiedShort(false), 1500);
-      } else {
+      } else if (threshold === 3) {
         setCopiedLong(true);
         window.setTimeout(() => setCopiedLong(false), 1500);
       }
     } catch {
-      if (mode === "short") {
+      if (threshold === 1) {
         setCopiedShort(false);
-      } else {
+      } else if (threshold === 3) {
         setCopiedLong(false);
       }
     }
@@ -291,21 +280,6 @@ export default function SourceAnalysisPage() {
               />
             </label>
 
-            <label className="text-xs font-semibold text-slate-500">
-              Min Süre (sn)
-              <select
-                value={minSeconds}
-                onChange={(event) => setMinSeconds(event.target.value)}
-                className="mt-2 w-[140px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
-              >
-                <option value="1">1+ sn</option>
-                <option value="2">2+ sn</option>
-                <option value="3">3+ sn</option>
-                <option value="4">4+ sn</option>
-                <option value="5">5+ sn</option>
-              </select>
-            </label>
-
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
               <input
                 type="checkbox"
@@ -348,130 +322,88 @@ export default function SourceAnalysisPage() {
             </p>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    {minSeconds} Saniye Altı
-                  </p>
-                  <h3 className="text-sm font-semibold text-slate-800">
-                    Kara Liste Adayları
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleCopy("short")}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
-                  disabled={!shortList.length}
+          <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+            {thresholds.map((threshold) => {
+              const list = sources
+                .filter((row) => (row.longSessions?.[threshold] ?? 0) > 0)
+                .sort(
+                  (a, b) =>
+                    (b.longSessions?.[threshold] ?? 0) -
+                    (a.longSessions?.[threshold] ?? 0)
+                );
+              const copied =
+                (threshold === 1 && copiedShort) ||
+                (threshold === 3 && copiedLong);
+              return (
+                <div
+                  key={threshold}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                 >
-                  {copiedShort ? "Kopyalandı" : "ID'leri Kopyala"}
-                </button>
-              </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        {threshold}+ Saniye
+                      </p>
+                      <h3 className="text-sm font-semibold text-slate-800">
+                        Beyaz Liste Adayları
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(threshold)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                      disabled={!list.length}
+                    >
+                      {copied ? "Kopyalandı" : "ID'leri Kopyala"}
+                    </button>
+                  </div>
 
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-left text-xs text-slate-600">
-                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Website ID</th>
-                      <th className="px-3 py-2">Session</th>
-                      <th className="px-3 py-2">Ziyaretçi</th>
-                      <th className="px-3 py-2">Oran %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shortList.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-3 py-6 text-center text-slate-400"
-                        >
-                          Sonuç bulunamadı.
-                        </td>
-                      </tr>
-                    )}
-                    {shortList.map((row) => (
-                      <tr
-                        key={row.sourceWebsiteId}
-                        className="border-b border-slate-100"
-                      >
-                        <td className="px-3 py-2 font-semibold text-slate-800">
-                          {row.sourceWebsiteId}
-                        </td>
-                        <td className="px-3 py-2">{row.shortSessions}</td>
-                        <td className="px-3 py-2">{row.shortVisitors}</td>
-                        <td className="px-3 py-2">
-                          {row.totalSessions
-                            ? Math.round(
-                                (row.shortSessions / row.totalSessions) * 100
-                              )
-                            : 0}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    {minSeconds} Saniye Üstü
-                  </p>
-                  <h3 className="text-sm font-semibold text-slate-800">
-                    Beyaz Liste Adayları
-                  </h3>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full text-left text-xs text-slate-600">
+                      <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Website ID</th>
+                          <th className="px-3 py-2">Session</th>
+                          <th className="px-3 py-2">Ziyaretçi</th>
+                          <th className="px-3 py-2">Oran %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {list.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={4}
+                              className="px-3 py-6 text-center text-slate-400"
+                            >
+                              Sonuç bulunamadı.
+                            </td>
+                          </tr>
+                        )}
+                        {list.map((row) => (
+                          <tr
+                            key={`${threshold}-${row.sourceWebsiteId}`}
+                            className="border-b border-slate-100"
+                          >
+                            <td className="px-3 py-2 font-semibold text-slate-800">
+                              {row.sourceWebsiteId}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.longSessions?.[threshold] ?? 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.longVisitors?.[threshold] ?? 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.longShare?.[threshold] ?? 0}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleCopy("long")}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
-                  disabled={!longList.length}
-                >
-                  {copiedLong ? "Kopyalandı" : "ID'leri Kopyala"}
-                </button>
-              </div>
-
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-left text-xs text-slate-600">
-                  <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Website ID</th>
-                      <th className="px-3 py-2">Session</th>
-                      <th className="px-3 py-2">Ziyaretçi</th>
-                      <th className="px-3 py-2">Oran %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {longList.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-3 py-6 text-center text-slate-400"
-                        >
-                          Sonuç bulunamadı.
-                        </td>
-                      </tr>
-                    )}
-                    {longList.map((row) => (
-                      <tr
-                        key={row.sourceWebsiteId}
-                        className="border-b border-slate-100"
-                      >
-                        <td className="px-3 py-2 font-semibold text-slate-800">
-                          {row.sourceWebsiteId}
-                        </td>
-                        <td className="px-3 py-2">{row.longSessions}</td>
-                        <td className="px-3 py-2">{row.longVisitors}</td>
-                        <td className="px-3 py-2">{row.longShare}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </section>
 
@@ -484,7 +416,7 @@ export default function SourceAnalysisPage() {
               Cihaz ve Tarayıcı Performansı
             </h2>
             <p className="text-xs text-slate-500">
-              Seçilen süre eşiğine göre yüzde dağılımı gösterir.
+              1+, 3+, 5+ ve 10+ saniye eşiğine göre yüzde dağılımı gösterir.
             </p>
           </div>
 
@@ -499,14 +431,17 @@ export default function SourceAnalysisPage() {
                     <tr>
                       <th className="px-3 py-2">Cihaz</th>
                       <th className="px-3 py-2">Session</th>
-                      <th className="px-3 py-2">{minSeconds}+ sn %</th>
+                      <th className="px-3 py-2">1+ sn %</th>
+                      <th className="px-3 py-2">3+ sn %</th>
+                      <th className="px-3 py-2">5+ sn %</th>
+                      <th className="px-3 py-2">10+ sn %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {deviceBreakdown.length === 0 && (
                       <tr>
                         <td
-                          colSpan={3}
+                          colSpan={6}
                           className="px-3 py-6 text-center text-slate-400"
                         >
                           Sonuç bulunamadı.
@@ -522,7 +457,12 @@ export default function SourceAnalysisPage() {
                           {row.label}
                         </td>
                         <td className="px-3 py-2">{row.totalSessions}</td>
-                        <td className="px-3 py-2">{row.longShare}</td>
+                        <td className="px-3 py-2">{row.longShare?.[1] ?? 0}</td>
+                        <td className="px-3 py-2">{row.longShare?.[3] ?? 0}</td>
+                        <td className="px-3 py-2">{row.longShare?.[5] ?? 0}</td>
+                        <td className="px-3 py-2">
+                          {row.longShare?.[10] ?? 0}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -540,14 +480,17 @@ export default function SourceAnalysisPage() {
                     <tr>
                       <th className="px-3 py-2">Tarayıcı</th>
                       <th className="px-3 py-2">Session</th>
-                      <th className="px-3 py-2">{minSeconds}+ sn %</th>
+                      <th className="px-3 py-2">1+ sn %</th>
+                      <th className="px-3 py-2">3+ sn %</th>
+                      <th className="px-3 py-2">5+ sn %</th>
+                      <th className="px-3 py-2">10+ sn %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {browserBreakdown.length === 0 && (
                       <tr>
                         <td
-                          colSpan={3}
+                          colSpan={6}
                           className="px-3 py-6 text-center text-slate-400"
                         >
                           Sonuç bulunamadı.
@@ -563,7 +506,12 @@ export default function SourceAnalysisPage() {
                           {row.label}
                         </td>
                         <td className="px-3 py-2">{row.totalSessions}</td>
-                        <td className="px-3 py-2">{row.longShare}</td>
+                        <td className="px-3 py-2">{row.longShare?.[1] ?? 0}</td>
+                        <td className="px-3 py-2">{row.longShare?.[3] ?? 0}</td>
+                        <td className="px-3 py-2">{row.longShare?.[5] ?? 0}</td>
+                        <td className="px-3 py-2">
+                          {row.longShare?.[10] ?? 0}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
