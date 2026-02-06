@@ -100,6 +100,7 @@ export default function SourceAnalysisPage() {
   const [pcCategory, setPcCategory] = useState("");
   const [pcLink, setPcLink] = useState("");
   const [pcCopied, setPcCopied] = useState(false);
+  const [pcAutoAdd, setPcAutoAdd] = useState(true);
   const [error, setError] = useState("");
   const [copiedShort, setCopiedShort] = useState(false);
   const [copiedLong, setCopiedLong] = useState(false);
@@ -140,6 +141,7 @@ export default function SourceAnalysisPage() {
           showBestComboOnly?: boolean;
           pcTargetUrl?: string;
           pcCategory?: string;
+          pcAutoAdd?: boolean;
         };
         if (saved.selectedSiteId) setSelectedSiteId(saved.selectedSiteId);
         if (saved.startDate) setStartDate(saved.startDate);
@@ -156,6 +158,8 @@ export default function SourceAnalysisPage() {
           setPcTargetUrl(saved.pcTargetUrl);
         if (typeof saved.pcCategory === "string")
           setPcCategory(saved.pcCategory);
+        if (typeof saved.pcAutoAdd === "boolean")
+          setPcAutoAdd(saved.pcAutoAdd);
       } catch {
         // ignore corrupted storage
       }
@@ -176,6 +180,7 @@ export default function SourceAnalysisPage() {
       showBestComboOnly,
       pcTargetUrl,
       pcCategory,
+      pcAutoAdd,
     };
     window.localStorage.setItem(storageKey, JSON.stringify(payload));
   }, [
@@ -188,6 +193,7 @@ export default function SourceAnalysisPage() {
     showBestComboOnly,
     pcTargetUrl,
     pcCategory,
+    pcAutoAdd,
   ]);
 
   useEffect(() => {
@@ -252,6 +258,18 @@ export default function SourceAnalysisPage() {
       const link = `${base}?${params.toString()}`;
       setPcLink(link);
       setError("");
+      if (pcAutoAdd) {
+        const normalizedLanding = normalizeLandingInput(parsed.toString());
+        if (normalizedLanding) {
+          const item: LandingItem = {
+            id: crypto.randomUUID(),
+            label: pcCategory.trim(),
+            urlInput: parsed.toString(),
+            normalizedUrl: normalizedLanding,
+          };
+          setLandingItems((prev) => [item, ...prev]);
+        }
+      }
     } catch {
       setError("Popcent hedef URL geçersiz.");
     }
@@ -574,6 +592,16 @@ export default function SourceAnalysisPage() {
                 placeholder="Örn: genel"
                 className="mt-2 w-full min-w-[180px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
               />
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <input
+                type="checkbox"
+                checked={pcAutoAdd}
+                onChange={(event) => setPcAutoAdd(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-700"
+              />
+              Link oluşturunca analize ekle
             </label>
 
             <button
