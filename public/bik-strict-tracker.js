@@ -124,6 +124,35 @@
     if (lang.startsWith("tr")) return "TR";
     return "";
   };
+  const getNetworkInfo = () => {
+    const connection =
+      navigator.connection ||
+      navigator.mozConnection ||
+      navigator.webkitConnection;
+    if (!connection) return null;
+    const info = {
+      type: typeof connection.type === "string" ? connection.type : null,
+      effectiveType:
+        typeof connection.effectiveType === "string"
+          ? connection.effectiveType
+          : null,
+      downlink:
+        typeof connection.downlink === "number" ? connection.downlink : null,
+      rtt: typeof connection.rtt === "number" ? connection.rtt : null,
+      saveData:
+        typeof connection.saveData === "boolean" ? connection.saveData : null,
+    };
+    if (
+      !info.type &&
+      !info.effectiveType &&
+      info.downlink === null &&
+      info.rtt === null &&
+      info.saveData === null
+    ) {
+      return null;
+    }
+    return info;
+  };
 
   let lastSent = null;
   let hasSentInitial = false;
@@ -157,6 +186,7 @@
       event_data: {
         pageviewTs: context.pageviewTs,
         elapsedSeconds,
+        network: getNetworkInfo(),
       },
     });
   };
@@ -245,6 +275,9 @@
       language: payload.language,
       countryCode: payload.countryCode,
       is_route_change: reason === "spa",
+      event_data: {
+        network: getNetworkInfo(),
+      },
     });
     schedulePings({
       visitorId,

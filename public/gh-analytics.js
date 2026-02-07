@@ -42,6 +42,37 @@
       storage.setItem(lastSeenKey, String(now));
       return id;
     };
+    const getNetworkInfo = () => {
+      const connection =
+        navigator.connection ||
+        navigator.mozConnection ||
+        navigator.webkitConnection;
+      if (!connection) return null;
+      const info = {
+        type: typeof connection.type === "string" ? connection.type : null,
+        effectiveType:
+          typeof connection.effectiveType === "string"
+            ? connection.effectiveType
+            : null,
+        downlink:
+          typeof connection.downlink === "number" ? connection.downlink : null,
+        rtt: typeof connection.rtt === "number" ? connection.rtt : null,
+        saveData:
+          typeof connection.saveData === "boolean"
+            ? connection.saveData
+            : null,
+      };
+      if (
+        !info.type &&
+        !info.effectiveType &&
+        info.downlink === null &&
+        info.rtt === null &&
+        info.saveData === null
+      ) {
+        return null;
+      }
+      return info;
+    };
 
     const sendPayload = (payload) => {
       updatePcMetaFromLocation();
@@ -69,6 +100,9 @@
     const trackPageview = () => {
       sendPayload({
         type: "pageview",
+        event_data: {
+          network: getNetworkInfo(),
+        },
         url: `${location.pathname}${location.search}`,
         referrer: document.referrer || null,
       });
@@ -79,7 +113,10 @@
       sendPayload({
         type: "event",
         event_name: name,
-        event_data: data ?? null,
+        event_data: {
+          ...(data ?? {}),
+          network: getNetworkInfo(),
+        },
         url: `${location.pathname}${location.search}`,
         referrer: document.referrer || null,
       });

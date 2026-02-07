@@ -146,18 +146,25 @@ export async function GET(request: Request) {
 
   const rows = (await prisma.$queryRaw`
     WITH matched AS (
-      SELECT DISTINCT
+      SELECT DISTINCT ON (e."sessionId")
         e."sessionId" AS "sessionId",
         e."visitorId" AS "visitorId",
-        COALESCE(e."userAgent", '') AS "userAgent"
+        COALESCE(e."userAgent", '') AS "userAgent",
+        COALESCE(
+          NULLIF(e."eventData"->'network'->>'type', ''),
+          NULLIF(e."eventData"->'network'->>'effectiveType', ''),
+          'unknown'
+        ) AS "network"
       FROM "analytics_events" e
       WHERE ${whereClause}
+      ORDER BY e."sessionId", e."createdAt" DESC
     ),
     durations AS (
       SELECT
         m."sessionId" AS "sessionId",
         m."visitorId" AS "visitorId",
         m."userAgent" AS "userAgent",
+        m."network" AS "network",
         GREATEST(
           0,
           EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
@@ -191,7 +198,8 @@ export async function GET(request: Request) {
             AND lower("userAgent") NOT LIKE '%huaweibrowser%' THEN 'Chrome'
           WHEN lower("userAgent") LIKE '%safari%' THEN 'Safari'
           ELSE 'Other'
-        END AS browser
+        END AS browser,
+        "network" AS network
       FROM durations
     )
     SELECT 'device:' || device AS key,
@@ -220,6 +228,15 @@ export async function GET(request: Request) {
            SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions
     FROM classified
     GROUP BY device, browser
+    UNION ALL
+    SELECT 'network:' || network AS key,
+           COUNT(*) AS total_sessions,
+           SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+           SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+           SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+           SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions
+    FROM classified
+    GROUP BY network
   `) as BreakdownRow[];
 
   const device = rows
@@ -300,11 +317,36 @@ export async function GET(request: Request) {
       return b.totalSessions - a.totalSessions;
     });
 
+  const network = rows
+    .filter((row) => row.key.startsWith("network:"))
+    .map((row) => {
+      const label = row.key.replace("network:", "");
+      const total = Number(row.total_sessions ?? 0);
+      return {
+        label,
+        totalSessions: total,
+        longSessions: {
+          lt1: Number(row.lt1_sessions ?? 0),
+          lt3: Number(row.lt3_sessions ?? 0),
+          ge5: Number(row.ge5_sessions ?? 0),
+          ge10: Number(row.ge10_sessions ?? 0),
+        },
+        longShare: {
+          lt1: total ? Math.round((Number(row.lt1_sessions ?? 0) / total) * 100) : 0,
+          lt3: total ? Math.round((Number(row.lt3_sessions ?? 0) / total) * 100) : 0,
+          ge5: total ? Math.round((Number(row.ge5_sessions ?? 0) / total) * 100) : 0,
+          ge10: total ? Math.round((Number(row.ge10_sessions ?? 0) / total) * 100) : 0,
+        },
+      };
+    })
+    .sort((a, b) => b.longShare.ge5 - a.longShare.ge5);
+
   return NextResponse.json({
     thresholds: ["lt1", "lt3", "ge5", "ge10"],
     popcentOnly,
     device,
     browser,
     combos,
+    network,
   });
 }

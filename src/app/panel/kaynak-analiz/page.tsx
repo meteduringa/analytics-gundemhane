@@ -43,6 +43,7 @@ type LandingResult = {
   device: BreakdownRow[];
   browser: BreakdownRow[];
   combos: BreakdownRow[];
+  network: BreakdownRow[];
   summary?: {
     totalSessions: number;
     totalVisitors: number;
@@ -452,6 +453,7 @@ export default function SourceAnalysisPage() {
             device: breakdownPayload.device ?? [],
             browser: breakdownPayload.browser ?? [],
             combos: breakdownPayload.combos ?? [],
+            network: breakdownPayload.network ?? [],
           };
         })
       );
@@ -1156,6 +1158,61 @@ export default function SourceAnalysisPage() {
                         </tbody>
                       </table>
                     </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Ağ Kırılımı
+                  </h3>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full text-left text-xs text-slate-600">
+                      <thead className="border-b border-slate-200 bg-white text-[11px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Ağ</th>
+                          <th className="px-3 py-2">Session</th>
+                          <th className="px-3 py-2">1 sn altı %</th>
+                          <th className="px-3 py-2">3 sn altı %</th>
+                          <th className="px-3 py-2">5+ sn %</th>
+                          <th className="px-3 py-2">10+ sn %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(result?.network ?? []).length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={6}
+                              className="px-3 py-6 text-center text-slate-400"
+                            >
+                              Sonuç bulunamadı.
+                            </td>
+                          </tr>
+                        )}
+                        {(result?.network ?? []).map((row) => (
+                          <tr
+                            key={`${item.id}-network-${row.label}`}
+                            className="border-b border-slate-100"
+                          >
+                            <td className="px-3 py-2 font-semibold text-slate-800">
+                              {row.label}
+                            </td>
+                            <td className="px-3 py-2">{row.totalSessions}</td>
+                            <td className="px-3 py-2">
+                              {row.longShare?.lt1 ?? 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.longShare?.lt3 ?? 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.longShare?.ge5 ?? 0}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.longShare?.ge10 ?? 0}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
