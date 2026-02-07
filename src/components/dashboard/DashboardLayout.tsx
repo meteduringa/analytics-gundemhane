@@ -12,7 +12,10 @@ const baseMenuItems = [
   { label: "Ayarlar", href: "/panel/ayarlar" },
 ];
 
-const adminOnlyItems = [{ label: "Kaynak Analizi", href: "/panel/kaynak-analiz" }];
+const adminOnlyItems = [
+  { label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
+  { label: "Genel Analiz", href: "/panel/genel-analiz" },
+];
 
 type LayoutProps = PropsWithChildren;
 
