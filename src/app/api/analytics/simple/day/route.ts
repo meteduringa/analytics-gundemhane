@@ -18,6 +18,9 @@ export async function GET(request: Request) {
 
   const dayDate = parseDayParam(dateParam) ?? new Date();
   const { dayString, start, end } = getIstanbulDayRange(dayDate);
+  const now = new Date();
+  const isToday =
+    now >= start && now <= end;
   const existing = await prisma.analyticsDailySimple.findUnique({
     where: {
       siteId_day: {
@@ -64,7 +67,7 @@ export async function GET(request: Request) {
     unique_visitors: BigInt(0),
   };
 
-  if (existing) {
+  if (existing && !isToday) {
     return NextResponse.json({
       siteId,
       day: dayString,
@@ -76,6 +79,23 @@ export async function GET(request: Request) {
       daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
       daily_popcent_pageviews: Number(popcentSummary.total_events),
     });
+  }
+  if (existing && isToday) {
+    const updatedRecently =
+      now.getTime() - existing.updatedAt.getTime() < 60_000;
+    if (updatedRecently) {
+      return NextResponse.json({
+        siteId,
+        day: dayString,
+        daily_unique_users: existing.dailyUniqueUsers,
+        daily_direct_unique_users: existing.dailyDirectUniqueUsers,
+        daily_pageviews: existing.dailyPageviews,
+        daily_avg_time_on_site_seconds_per_unique:
+          existing.dailyAvgTimeOnSiteSecondsPerUnique,
+        daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
+        daily_popcent_pageviews: Number(popcentSummary.total_events),
+      });
+    }
   }
 
   const computed = await computeSimpleDayMetrics(siteId, dayDate);
