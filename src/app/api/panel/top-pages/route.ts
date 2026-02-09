@@ -114,7 +114,7 @@ export async function GET(request: Request) {
       bikConditions.push(Prisma.sql`"ts" <= ${endDate}`);
     }
 
-    const bikWhere = Prisma.join(bikConditions, Prisma.sql` AND `);
+    const bikWhere = Prisma.join(bikConditions, " AND ");
 
     const bikPages = (await prisma.$queryRaw`
       SELECT
@@ -151,7 +151,7 @@ export async function GET(request: Request) {
     eventConditions.push(Prisma.sql`"createdAt" <= ${endDate}`);
   }
 
-  const eventWhereClause = Prisma.join(eventConditions, Prisma.sql` AND `);
+  const eventWhereClause = Prisma.join(eventConditions, " AND ");
 
   const pages = (await prisma.$queryRaw`
     SELECT
