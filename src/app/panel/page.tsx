@@ -19,6 +19,7 @@ const PanelPage = () => {
   const [selectedDate, setSelectedDate] = useState(() =>
     formatDateInput(new Date())
   );
+  const [viewMode, setViewMode] = useState<"daily" | "live">("daily");
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<{
     id: string;
@@ -57,6 +58,9 @@ const PanelPage = () => {
       siteId,
       date: dateValue,
     });
+    const liveParams = new URLSearchParams({
+      siteId,
+    });
     const topPagesParams = new URLSearchParams({
       websiteId: siteId,
       start: dateValue,
@@ -64,23 +68,39 @@ const PanelPage = () => {
       limit: "30",
     });
 
-    const [response, topPagesResponse] = await Promise.all([
-      fetch(`/api/analytics/simple/day?${params.toString()}`),
-      fetch(`/api/panel/top-pages?${topPagesParams.toString()}`),
-    ]);
+    const metricsPromise =
+      viewMode === "live"
+        ? fetch(`/api/analytics/simple/live?${liveParams.toString()}`)
+        : fetch(`/api/analytics/simple/day?${params.toString()}`);
+    const topPagesPromise = fetch(
+      `/api/panel/top-pages?${topPagesParams.toString()}`
+    );
 
+    const response = await metricsPromise;
     const payload = await response.json();
     if (response.ok) {
-      setMetrics(payload);
-    }
-
-    const topPagesPayload = await topPagesResponse.json();
-    if (topPagesResponse.ok) {
-      setTopPages(topPagesPayload.pages ?? []);
+      if (viewMode === "live") {
+        setMetrics({
+          daily_unique_users: payload.live_unique_users ?? 0,
+          daily_direct_unique_users: payload.live_direct_unique_users ?? 0,
+          daily_pageviews: payload.live_total_events ?? 0,
+          daily_avg_time_on_site_seconds_per_unique: 0,
+          daily_popcent_unique_users: payload.live_popcent_unique_users ?? 0,
+          daily_popcent_pageviews: payload.live_popcent_pageviews ?? 0,
+        });
+      } else {
+        setMetrics(payload);
+      }
     }
 
     if (!silent) {
       setIsRefreshing(false);
+    }
+
+    const topPagesResponse = await topPagesPromise;
+    const topPagesPayload = await topPagesResponse.json();
+    if (topPagesResponse.ok) {
+      setTopPages(topPagesPayload.pages ?? []);
     }
   };
 
@@ -120,11 +140,11 @@ const PanelPage = () => {
       }
     };
     loadSites();
-  }, [selectedSiteId, user]);
+  }, [user]);
 
   useEffect(() => {
     refreshAll(selectedSiteId, selectedDate);
-  }, [selectedDate, selectedSiteId]);
+  }, [selectedDate, selectedSiteId, viewMode]);
 
   useEffect(() => {
     if (!user || user.role !== "CUSTOMER") return;
@@ -133,7 +153,7 @@ const PanelPage = () => {
       refreshAll(selectedSiteId, selectedDate, { silent: true });
     }, 20000);
     return () => window.clearInterval(interval);
-  }, [selectedDate, selectedSiteId, user]);
+  }, [selectedDate, selectedSiteId, user, viewMode]);
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
@@ -161,22 +181,39 @@ const PanelPage = () => {
       </header>
 
       <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs font-semibold text-slate-500">
-            Site Seçimi
-            <select
-              value={selectedSiteId}
-              onChange={(event) => setSelectedSiteId(event.target.value)}
-              className="mt-2 w-full min-w-[240px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+            {selectedSite ? selectedSite.name : "Site Yükleniyor"}
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-500">
+            <button
+              type="button"
+              onClick={() => setViewMode("daily")}
+              className={`rounded-2xl px-4 py-2 transition ${
+                viewMode === "daily"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
             >
-              <option value="">Site seçin</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              Günlük
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const today = formatDateInput(new Date());
+                setDateInput(today);
+                setSelectedDate(today);
+                setViewMode("live");
+              }}
+              className={`rounded-2xl px-4 py-2 transition ${
+                viewMode === "live"
+                  ? "bg-emerald-600 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Anlık Veri
+            </button>
+          </div>
         </div>
       </div>
 
@@ -185,6 +222,7 @@ const PanelPage = () => {
         onDateChange={setDateInput}
         onFilter={() => setSelectedDate(dateInput)}
         onRefresh={() => refreshAll(selectedSiteId, selectedDate)}
+        disableDate={viewMode === "live"}
       />
 
       {isRefreshing && (
@@ -196,32 +234,44 @@ const PanelPage = () => {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatsCard
-          title="Günlük Tekil"
+          title={`${viewMode === "live" ? "Anlık" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail="Seçilen gün"
+          detail={viewMode === "live" ? "Son 20 sn cache" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
         <StatsCard
-          title="Günlük Direct"
+          title={`${viewMode === "live" ? "Anlık" : "Günlük"} Direct`}
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
-          detail="Referrer boş (direct)"
+          detail={
+            viewMode === "live"
+              ? "Son 20 sn cache"
+              : "Referrer boş (direct)"
+          }
           accent="text-cyan-700"
           tone="bg-cyan-50"
         />
         <StatsCard
-          title="Günlük Pageview"
+          title={`${viewMode === "live" ? "Anlık" : "Günlük"} Pageview`}
           value={`${metrics?.daily_pageviews ?? 0}`}
-          detail="Deduped görüntülenme"
+          detail={viewMode === "live" ? "Son 20 sn cache" : "Deduped görüntülenme"}
           accent="text-indigo-700"
           tone="bg-indigo-50"
         />
         <StatsCard
           title="Günlük Ortalama Süre"
-          value={formatDuration(
-            metrics?.daily_avg_time_on_site_seconds_per_unique ?? 0
-          )}
-          detail="Tekil başına ortalama"
+          value={
+            viewMode === "live"
+              ? "-"
+              : formatDuration(
+                  metrics?.daily_avg_time_on_site_seconds_per_unique ?? 0
+                )
+          }
+          detail={
+            viewMode === "live"
+              ? "Anlık modda süre hesaplanmaz"
+              : "Tekil başına ortalama"
+          }
           accent="text-rose-600"
           tone="bg-rose-50"
         />

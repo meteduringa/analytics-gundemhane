@@ -7,6 +7,7 @@ type FiltersBarProps = {
   onDateChange: (value: string) => void;
   onFilter: () => void;
   onRefresh: () => void;
+  disableDate?: boolean;
 };
 
 const FiltersBar = ({
@@ -14,6 +15,7 @@ const FiltersBar = ({
   onDateChange,
   onFilter,
   onRefresh,
+  disableDate = false,
 }: FiltersBarProps) => {
   return (
     <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
@@ -26,7 +28,8 @@ const FiltersBar = ({
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
               onDateChange(event.target.value)
             }
-            className="mt-2 rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+            disabled={disableDate}
+            className="mt-2 rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500 disabled:cursor-not-allowed disabled:bg-slate-100"
           />
         </label>
 
