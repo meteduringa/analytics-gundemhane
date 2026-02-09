@@ -8,8 +8,7 @@ const parseSections = (value: unknown) => {
   }
   if (typeof value === "string") {
     return value
-      .split(/[,
-]/)
+      .split(/[,\n]/)
       .map((item) => item.trim())
       .filter(Boolean);
   }
