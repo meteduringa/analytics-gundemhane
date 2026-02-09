@@ -12,6 +12,7 @@ const LoginCard = ({ onSuccess }: Props) => {
   const [touched, setTouched] = useState({ username: false, password: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showReset, setShowReset] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -125,6 +126,21 @@ const LoginCard = ({ onSuccess }: Props) => {
       >
         {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
       </button>
+
+      <button
+        type="button"
+        onClick={() => setShowReset((prev) => !prev)}
+        className="mt-4 w-full text-sm font-semibold text-slate-500 transition hover:text-slate-700"
+      >
+        Şifremi unuttum
+      </button>
+
+      {showReset && (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          Şifrenizi sıfırlamak için lütfen yöneticinizle iletişime geçin.
+          İsterseniz admin panelinden yeni şifre atanabilir.
+        </div>
+      )}
     </form>
   );
 };

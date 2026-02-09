@@ -39,6 +39,7 @@ export async function POST(request: Request) {
       email: user.email,
       name: user.name,
       role: user.role,
+      panelSections: user.panelSections ?? [],
     },
   });
 }

@@ -76,6 +76,15 @@ export async function GET(request: Request) {
   const createdAtLocal = Prisma.sql`(e."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')`;
   const startTs = normalizedStart ? `${normalizedStart} 00:00:00` : null;
   const endTs = normalizedEnd ? `${normalizedEnd} 23:59:59` : null;
+  const startDate = normalizedStart ? new Date(`${normalizedStart}T00:00:00+03:00`) : null;
+  const endDate = normalizedEnd ? new Date(`${normalizedEnd}T00:00:00+03:00`) : null;
+  const totalDays =
+    startDate && endDate
+      ? Math.max(
+          1,
+          Math.floor((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1
+        )
+      : 7;
 
   const pathExpr = Prisma.sql`trim(both '/' from split_part(e."url", '?', 1))`;
   const firstSegment = Prisma.sql`split_part(${pathExpr}, '/', 1)`;
@@ -128,7 +137,7 @@ export async function GET(request: Request) {
     loyal AS (
       SELECT visitor_id
       FROM daily
-      WHERE days_seen >= 3 AND pageviews >= 2
+      WHERE days_seen >= ${totalDays}
     )
     SELECT
       (SELECT COUNT(DISTINCT visitor_id) FROM events) AS total_unique,
@@ -159,7 +168,7 @@ export async function GET(request: Request) {
     loyal AS (
       SELECT visitor_id
       FROM daily
-      WHERE days_seen >= 3 AND pageviews >= 2
+      WHERE days_seen >= ${totalDays}
     )
     SELECT
       category,
@@ -192,7 +201,7 @@ export async function GET(request: Request) {
     loyal AS (
       SELECT visitor_id
       FROM daily
-      WHERE days_seen >= 3 AND pageviews >= 2
+      WHERE days_seen >= ${totalDays}
     )
     SELECT
       hour,
@@ -224,7 +233,7 @@ export async function GET(request: Request) {
     loyal AS (
       SELECT visitor_id
       FROM daily
-      WHERE days_seen >= 3 AND pageviews >= 2
+      WHERE days_seen >= ${totalDays}
     )
     SELECT
       category,

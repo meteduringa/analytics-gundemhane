@@ -6,19 +6,20 @@ import { usePathname } from "next/navigation";
 import { PropsWithChildren, useEffect, useMemo, useState } from "react";
 
 const baseMenuItems = [
-  { label: "Anasayfa", href: "/panel" },
-  { label: "Ziyaretçi (Anlık)", href: "/panel" },
-  { label: "Ziyaretçi (Günlük)", href: "/panel" },
-  { label: "Ayarlar", href: "/panel/ayarlar" },
+  { key: "home", label: "Anasayfa", href: "/panel" },
+  { key: "realtime", label: "Ziyaretçi (Anlık)", href: "/panel" },
+  { key: "daily", label: "Ziyaretçi (Günlük)", href: "/panel" },
+  { key: "settings", label: "Ayarlar", href: "/panel/ayarlar" },
 ];
 
 const customerOnlyItems = [
-  { label: "Keşfet Analizi", href: "/panel/kesfet-analiz" },
+  { key: "discover", label: "Keşfet Analizi", href: "/panel/kesfet-analiz" },
 ];
 
 const adminOnlyItems = [
-  { label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
-  { label: "Genel Analiz", href: "/panel/genel-analiz" },
+  { key: "source", label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
+  { key: "general", label: "Genel Analiz", href: "/panel/genel-analiz" },
+  { key: "users", label: "Kullanıcılar", href: "/panel/admin-kullanicilar" },
 ];
 
 type LayoutProps = PropsWithChildren;
@@ -26,6 +27,7 @@ type LayoutProps = PropsWithChildren;
 const DashboardLayout = ({ children }: LayoutProps) => {
   const pathname = usePathname();
   const [role, setRole] = useState<"ADMIN" | "CUSTOMER" | null>(null);
+  const [panelSections, setPanelSections] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -35,10 +37,17 @@ const DashboardLayout = ({ children }: LayoutProps) => {
       return;
     }
     try {
-      const parsed = JSON.parse(rawUser) as { role?: "ADMIN" | "CUSTOMER" };
+      const parsed = JSON.parse(rawUser) as {
+        role?: "ADMIN" | "CUSTOMER";
+        panelSections?: string[];
+      };
       setRole(parsed.role ?? null);
+      setPanelSections(
+        Array.isArray(parsed.panelSections) ? parsed.panelSections : null
+      );
     } catch {
       setRole(null);
+      setPanelSections(null);
     }
   }, []);
 
@@ -47,10 +56,14 @@ const DashboardLayout = ({ children }: LayoutProps) => {
       return [...baseMenuItems, ...adminOnlyItems];
     }
     if (role === "CUSTOMER") {
-      return [...baseMenuItems, ...customerOnlyItems];
+      const available = [...baseMenuItems, ...customerOnlyItems];
+      if (!panelSections || panelSections.length === 0) {
+        return available;
+      }
+      return available.filter((item) => panelSections.includes(item.key));
     }
     return baseMenuItems;
-  }, [role]);
+  }, [panelSections, role]);
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="sticky top-0 z-20">

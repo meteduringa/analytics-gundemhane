@@ -39,6 +39,7 @@ enum BIKEventType {
     passwordHash String?
     name         String?
     role         UserRole             @default(CUSTOMER)
+    panelSections String[]            @default([])
     createdAt    DateTime             @default(now())
     updatedAt    DateTime             @updatedAt
     userWebsites AnalyticsUserWebsite[]
