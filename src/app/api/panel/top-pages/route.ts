@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getBikConfig } from "@/lib/bik-config";
 
@@ -95,43 +96,80 @@ export async function GET(request: Request) {
     const config = await getBikConfig(websiteId);
     const includeSuspiciousInCounted = config.suspiciousSoftMode !== false;
 
-    const bikPages = await prisma.bIKEvent.groupBy({
-      by: ["url"],
-      where: {
-        websiteId,
-        type: "PAGE_VIEW",
-        ts: {
-          gte: startDate ?? undefined,
-          lte: endDate ?? undefined,
-        },
-        isValid: true,
-        ...(includeSuspiciousInCounted ? {} : { isSuspicious: false }),
-      },
-      _count: { url: true },
-      orderBy: { _count: { url: "desc" } },
-      take: limit,
-    });
+    const bikConditions: Prisma.Sql[] = [
+      Prisma.sql`"websiteId" = ${websiteId}`,
+      Prisma.sql`"type" = 'PAGE_VIEW'`,
+      Prisma.sql`"isValid" = true`,
+    ];
+
+    if (!includeSuspiciousInCounted) {
+      bikConditions.push(Prisma.sql`"isSuspicious" = false`);
+    }
+
+    if (startDate) {
+      bikConditions.push(Prisma.sql`"ts" >= ${startDate}`);
+    }
+
+    if (endDate) {
+      bikConditions.push(Prisma.sql`"ts" <= ${endDate}`);
+    }
+
+    const bikWhere = Prisma.join(bikConditions, Prisma.sql` AND `);
+
+    const bikPages = (await prisma.$queryRaw`
+      SELECT
+        "url",
+        COUNT(*)::int AS pageviews,
+        COUNT(DISTINCT "visitorId")::int AS unique_visitors
+      FROM "bik_events"
+      WHERE ${bikWhere}
+      GROUP BY "url"
+      ORDER BY pageviews DESC
+      LIMIT ${limit};
+    `) as { url: string; pageviews: number; unique_visitors: number }[];
 
     return NextResponse.json({
       pages: bikPages.map((page) => ({
         url: page.url,
-        pageviews: page._count.url,
+        pageviews: Number(page.pageviews ?? 0),
+        uniqueVisitors: Number(page.unique_visitors ?? 0),
       })),
     });
   }
 
-  const pages = await prisma.analyticsEvent.groupBy({
-    by: ["url"],
-    where: { ...eventWhere, mode: "RAW" },
-    _count: { url: true },
-    orderBy: { _count: { url: "desc" } },
-    take: limit,
-  });
+  const eventConditions: Prisma.Sql[] = [
+    Prisma.sql`"websiteId" = ${websiteId}`,
+    Prisma.sql`"type" = 'PAGEVIEW'`,
+    Prisma.sql`"mode" = 'RAW'`,
+  ];
+
+  if (startDate) {
+    eventConditions.push(Prisma.sql`"createdAt" >= ${startDate}`);
+  }
+
+  if (endDate) {
+    eventConditions.push(Prisma.sql`"createdAt" <= ${endDate}`);
+  }
+
+  const eventWhereClause = Prisma.join(eventConditions, Prisma.sql` AND `);
+
+  const pages = (await prisma.$queryRaw`
+    SELECT
+      "url",
+      COUNT(*)::int AS pageviews,
+      COUNT(DISTINCT "visitorId")::int AS unique_visitors
+    FROM "analytics_events"
+    WHERE ${eventWhereClause}
+    GROUP BY "url"
+    ORDER BY pageviews DESC
+    LIMIT ${limit};
+  `) as { url: string; pageviews: number; unique_visitors: number }[];
 
   return NextResponse.json({
     pages: pages.map((page) => ({
       url: page.url,
-      pageviews: page._count.url,
+      pageviews: Number(page.pageviews ?? 0),
+      uniqueVisitors: Number(page.unique_visitors ?? 0),
     })),
   });
 }

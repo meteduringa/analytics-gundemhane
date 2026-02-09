@@ -6,9 +6,7 @@ import { usePathname } from "next/navigation";
 import { PropsWithChildren, useEffect, useMemo, useState } from "react";
 
 const baseMenuItems = [
-  { key: "home", label: "Anasayfa", href: "/panel" },
-  { key: "realtime", label: "Ziyaretçi (Anlık)", href: "/panel" },
-  { key: "daily", label: "Ziyaretçi (Günlük)", href: "/panel" },
+  { key: "home", label: "Ön Dashboard", href: "/panel" },
   { key: "settings", label: "Ayarlar", href: "/panel/ayarlar" },
 ];
 

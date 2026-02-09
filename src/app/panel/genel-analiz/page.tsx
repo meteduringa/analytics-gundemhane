@@ -1,17 +1,13 @@
 "use client";
 
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-type Site = {
-  id: string;
-  name: string;
-  allowedDomains: string[];
-};
 
 type Row = {
   url: string;
+  websiteId: string;
+  websiteName: string;
   totalPageviews: number;
   uniqueVisitors: number;
 };
@@ -53,8 +49,6 @@ export default function GeneralAnalysisPage() {
     name?: string | null;
     role: "ADMIN" | "CUSTOMER";
   } | null>(null);
-  const [sites, setSites] = useState<Site[]>([]);
-  const [selectedSiteId, setSelectedSiteId] = useState("");
   const [startDate, setStartDate] = useState(() =>
     formatDateInput(daysAgo(7))
   );
@@ -91,11 +85,9 @@ export default function GeneralAnalysisPage() {
     if (rawState) {
       try {
         const saved = JSON.parse(rawState) as {
-          selectedSiteId?: string;
           startDate?: string;
           endDate?: string;
         };
-        if (saved.selectedSiteId) setSelectedSiteId(saved.selectedSiteId);
         if (saved.startDate) {
           const normalized = normalizeDateInput(saved.startDate);
           if (normalized) setStartDate(normalized);
@@ -113,24 +105,6 @@ export default function GeneralAnalysisPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [router]);
 
-  useEffect(() => {
-    if (!ready || !user) return;
-    const loadSites = async () => {
-      const params = new URLSearchParams({
-        userId: user.id,
-        role: user.role,
-      });
-      const response = await fetch(`/api/panel/sites?${params.toString()}`);
-      const payload = await response.json();
-      if (response.ok) {
-        setSites(payload.sites ?? []);
-        if (!selectedSiteId && payload.sites?.length) {
-          setSelectedSiteId(payload.sites[0].id);
-        }
-      }
-    };
-    void loadSites();
-  }, [ready, user, selectedSiteId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -138,28 +112,17 @@ export default function GeneralAnalysisPage() {
     window.localStorage.setItem(
       storageKey,
       JSON.stringify({
-        selectedSiteId,
         startDate,
         endDate,
       })
     );
-  }, [ready, selectedSiteId, startDate, endDate]);
-
-  const selectedSite = useMemo(
-    () => sites.find((site) => site.id === selectedSiteId),
-    [selectedSiteId, sites]
-  );
+  }, [ready, startDate, endDate]);
 
   const runAnalysis = async () => {
     setError("");
-    if (!selectedSiteId) {
-      setError("Lütfen bir site seçin.");
-      return;
-    }
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
-        websiteId: selectedSiteId,
         start: startDate,
         end: endDate,
       });
@@ -191,31 +154,10 @@ export default function GeneralAnalysisPage() {
             Genel Analiz
           </p>
           <h1 className="text-3xl font-bold text-slate-900">Genel Analiz</h1>
-          {selectedSite && (
-            <p className="text-sm text-slate-500">
-              Seçili site: <span className="font-semibold">{selectedSite.name}</span>
-            </p>
-          )}
         </header>
 
         <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
           <div className="flex flex-wrap items-end gap-4">
-            <label className="text-xs font-semibold text-slate-500">
-              Site Seçimi
-              <select
-                value={selectedSiteId}
-                onChange={(event) => setSelectedSiteId(event.target.value)}
-                className="mt-2 w-full min-w-[240px] rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
-              >
-                <option value="">Site seçin</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
             <label className="text-xs font-semibold text-slate-500">
               Başlangıç
               <input
@@ -241,8 +183,8 @@ export default function GeneralAnalysisPage() {
               onClick={runAnalysis}
               className="h-10 rounded-2xl bg-slate-900 px-6 text-sm font-semibold text-white transition hover:bg-slate-800"
             >
-              {isLoading ? "Analiz ediliyor..." : "Analiz Et"}
-            </button>
+                {isLoading ? "Analiz ediliyor..." : "Analiz Et"}
+              </button>
           </div>
         </div>
 
@@ -272,6 +214,7 @@ export default function GeneralAnalysisPage() {
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
+                  <th className="px-3 py-2">Site</th>
                   <th className="px-3 py-2">URL</th>
                   <th className="px-3 py-2">Toplam Gösterim</th>
                   <th className="px-3 py-2">Tekil Ziyaretçi</th>
@@ -281,7 +224,7 @@ export default function GeneralAnalysisPage() {
                 {rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={3}
+                      colSpan={4}
                       className="px-3 py-6 text-center text-sm text-slate-400"
                     >
                       Sonuç bulunamadı.
@@ -290,9 +233,12 @@ export default function GeneralAnalysisPage() {
                 ) : (
                   rows.map((row) => (
                     <tr
-                      key={row.url}
+                      key={`${row.websiteId}:${row.url}`}
                       className="border-b border-slate-100 last:border-none"
                     >
+                      <td className="px-3 py-2 text-slate-700">
+                        {row.websiteName}
+                      </td>
                       <td className="px-3 py-2 font-medium text-slate-800">
                         {row.url || "[Bilinmeyen]"}
                       </td>

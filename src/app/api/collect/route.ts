@@ -96,6 +96,15 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       return { pc_source: null, pc_cat: null };
     }
   };
+  const extractPopcentSiteId = (value: string) => {
+    if (!value) return null;
+    try {
+      const parsed = new URL(value, "https://example.com");
+      return parsed.searchParams.get("takip");
+    } catch {
+      return null;
+    }
+  };
   const isPlainObject = (value: unknown): value is Record<string, unknown> =>
     Boolean(value) && typeof value === "object" && !Array.isArray(value);
   const istanbulDayString = (date: Date) => {
@@ -177,6 +186,11 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       asString(payload.sourceWebsiteId) ??
       null;
     const popcentMeta = extractPopcentMeta(url);
+    const popcentSiteId =
+      extractPopcentSiteId(url) ??
+      asString(payload.popcent_site_id) ??
+      asString(payload.pc_site_id) ??
+      null;
 
     const originHost =
       extractHostname(origin) ?? extractHostname(request.headers.get("referer"));
@@ -227,11 +241,14 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       (isPlainObject(eventData) ? asString(eventData.pc_cat) : null);
     const enrichedEventData = (() => {
       const extra: Record<string, unknown> = {};
-      if (sourceWebsiteId) {
-        extra.source_website_id = sourceWebsiteId;
-      }
       const finalPcSource = payloadPcSource ?? popcentMeta.pc_source;
       const finalPcCat = payloadPcCat ?? popcentMeta.pc_cat;
+      if (finalPcSource === "popcent" && popcentSiteId) {
+        extra.popcent_site_id = popcentSiteId;
+        extra.source_website_id = popcentSiteId;
+      } else if (sourceWebsiteId) {
+        extra.source_website_id = sourceWebsiteId;
+      }
       if (finalPcSource) {
         extra.pc_source = finalPcSource;
       }
