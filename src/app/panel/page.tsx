@@ -53,32 +53,27 @@ const PanelPage = () => {
     if (!silent) {
       setIsRefreshing(true);
     }
-    await fetch(`/api/analytics/simple/recompute`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ siteId, date: dateValue }),
-    }).catch(() => null);
     const params = new URLSearchParams({
       siteId,
       date: dateValue,
     });
-    const response = await fetch(
-      `/api/analytics/simple/day?${params.toString()}`
-    );
-    const payload = await response.json();
-    if (response.ok) {
-      setMetrics(payload);
-    }
-
     const topPagesParams = new URLSearchParams({
       websiteId: siteId,
       start: dateValue,
       end: dateValue,
       limit: "30",
     });
-    const topPagesResponse = await fetch(
-      `/api/panel/top-pages?${topPagesParams.toString()}`
-    );
+
+    const [response, topPagesResponse] = await Promise.all([
+      fetch(`/api/analytics/simple/day?${params.toString()}`),
+      fetch(`/api/panel/top-pages?${topPagesParams.toString()}`),
+    ]);
+
+    const payload = await response.json();
+    if (response.ok) {
+      setMetrics(payload);
+    }
+
     const topPagesPayload = await topPagesResponse.json();
     if (topPagesResponse.ok) {
       setTopPages(topPagesPayload.pages ?? []);

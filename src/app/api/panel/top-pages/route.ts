@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getBikConfig } from "@/lib/bik-config";
+import { getRedis } from "@/lib/redis";
 
 const parseFilterDate = (value: string | null, endOfDay = false) => {
   if (!value) return null;
@@ -26,6 +27,27 @@ export async function GET(request: Request) {
 
   const startDate = parseFilterDate(startValue);
   const endDate = parseFilterDate(endValue, true);
+
+  const cacheKey = [
+    "top-pages",
+    websiteId,
+    startValue ?? "",
+    endValue ?? "",
+    hideShortReads ? "1" : "0",
+    String(limit),
+  ].join(":");
+
+  try {
+    const redis = await getRedis();
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return NextResponse.json(JSON.parse(cached));
+      }
+    }
+  } catch {
+    // Ignore cache failures.
+  }
 
   const sessionWhere: {
     websiteId: string;
@@ -128,13 +150,26 @@ export async function GET(request: Request) {
       LIMIT ${limit};
     `) as { url: string; pageviews: number; unique_visitors: number }[];
 
-    return NextResponse.json({
+    const responsePayload = {
       pages: bikPages.map((page) => ({
         url: page.url,
         pageviews: Number(page.pageviews ?? 0),
         uniqueVisitors: Number(page.unique_visitors ?? 0),
       })),
-    });
+    };
+
+    try {
+      const redis = await getRedis();
+      if (redis) {
+        await redis.set(cacheKey, JSON.stringify(responsePayload), {
+          EX: 20,
+        });
+      }
+    } catch {
+      // Ignore cache failures.
+    }
+
+    return NextResponse.json(responsePayload);
   }
 
   const eventConditions: Prisma.Sql[] = [
@@ -165,11 +200,24 @@ export async function GET(request: Request) {
     LIMIT ${limit};
   `) as { url: string; pageviews: number; unique_visitors: number }[];
 
-  return NextResponse.json({
+  const responsePayload = {
     pages: pages.map((page) => ({
       url: page.url,
       pageviews: Number(page.pageviews ?? 0),
       uniqueVisitors: Number(page.unique_visitors ?? 0),
     })),
-  });
+  };
+
+  try {
+    const redis = await getRedis();
+    if (redis) {
+      await redis.set(cacheKey, JSON.stringify(responsePayload), {
+        EX: 20,
+      });
+    }
+  } catch {
+    // Ignore cache failures.
+  }
+
+  return NextResponse.json(responsePayload);
 }
