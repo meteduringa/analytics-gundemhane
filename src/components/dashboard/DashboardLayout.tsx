@@ -12,6 +12,10 @@ const baseMenuItems = [
   { label: "Ayarlar", href: "/panel/ayarlar" },
 ];
 
+const customerOnlyItems = [
+  { label: "Keşfet Analizi", href: "/panel/kesfet-analiz" },
+];
+
 const adminOnlyItems = [
   { label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
   { label: "Genel Analiz", href: "/panel/genel-analiz" },
@@ -41,6 +45,9 @@ const DashboardLayout = ({ children }: LayoutProps) => {
   const menuItems = useMemo(() => {
     if (role === "ADMIN") {
       return [...baseMenuItems, ...adminOnlyItems];
+    }
+    if (role === "CUSTOMER") {
+      return [...baseMenuItems, ...customerOnlyItems];
     }
     return baseMenuItems;
   }, [role]);
