@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
-import { computeLiveMetrics } from "@/lib/analytics-live";
+import { prisma } from "@/lib/prisma";
+import { getIstanbulDayRange } from "@/lib/bik-time";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "siteId zorunludur." }, { status: 400 });
   }
 
-  const cacheKey = `simple:live:${siteId}`;
+  const cacheKey = `simple:live:clean:${siteId}`;
 
   try {
     const redis = await getRedis();
@@ -26,15 +27,26 @@ export async function GET(request: Request) {
     // Ignore cache errors.
   }
 
-  const metrics = await computeLiveMetrics(siteId);
+  const { start } = getIstanbulDayRange(new Date());
+  const record = await prisma.analyticsDailySimple.findUnique({
+    where: {
+      siteId_day: {
+        siteId,
+        day: start,
+      },
+    },
+  });
+
   const payload = {
-    siteId: metrics.siteId,
-    day: metrics.day,
-    live_total_events: metrics.totalEvents,
-    live_unique_users: metrics.uniqueVisitors,
-    live_direct_unique_users: metrics.directUniqueVisitors,
-    live_popcent_unique_users: metrics.popcentUniqueVisitors,
-    live_popcent_pageviews: metrics.popcentTotalEvents,
+    siteId,
+    day: start.toISOString().split("T")[0],
+    daily_unique_users: record?.dailyUniqueUsers ?? 0,
+    daily_direct_unique_users: record?.dailyDirectUniqueUsers ?? 0,
+    daily_pageviews: record?.dailyPageviews ?? 0,
+    daily_avg_time_on_site_seconds_per_unique:
+      record?.dailyAvgTimeOnSiteSecondsPerUnique ?? 0,
+    daily_popcent_unique_users: 0,
+    daily_popcent_pageviews: 0,
   };
 
   try {

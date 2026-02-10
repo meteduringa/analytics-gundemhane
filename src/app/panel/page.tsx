@@ -82,18 +82,7 @@ const PanelPage = () => {
     const response = await metricsPromise;
     const payload = await response.json();
     if (response.ok) {
-      if (viewMode === "live") {
-        setMetrics({
-          daily_unique_users: payload.live_unique_users ?? 0,
-          daily_direct_unique_users: payload.live_direct_unique_users ?? 0,
-          daily_pageviews: payload.live_total_events ?? 0,
-          daily_avg_time_on_site_seconds_per_unique: 0,
-          daily_popcent_unique_users: payload.live_popcent_unique_users ?? 0,
-          daily_popcent_pageviews: payload.live_popcent_pageviews ?? 0,
-        });
-      } else {
-        setMetrics(payload);
-      }
+      setMetrics(payload);
     }
 
     if (!silent) {
@@ -237,27 +226,29 @@ const PanelPage = () => {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatsCard
-          title={`${viewMode === "live" ? "Anlık" : "Günlük"} Tekil`}
+          title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail={viewMode === "live" ? "Son 20 sn cache" : "Seçilen gün"}
+          detail={viewMode === "live" ? "Clean cache (30 sn)" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
         <StatsCard
-          title={`${viewMode === "live" ? "Anlık" : "Günlük"} Direct`}
+          title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Direct`}
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Son 20 sn cache"
+              ? "Clean cache (30 sn)"
               : "Referrer boş (direct)"
           }
           accent="text-cyan-700"
           tone="bg-cyan-50"
         />
         <StatsCard
-          title={`${viewMode === "live" ? "Anlık" : "Günlük"} Pageview`}
+          title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Pageview`}
           value={`${metrics?.daily_pageviews ?? 0}`}
-          detail={viewMode === "live" ? "Son 20 sn cache" : "Deduped görüntülenme"}
+          detail={
+            viewMode === "live" ? "Clean cache (30 sn)" : "Deduped görüntülenme"
+          }
           accent="text-indigo-700"
           tone="bg-indigo-50"
         />
