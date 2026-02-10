@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   try {
     const redis = await getRedis();
     if (redis) {
-      await redis.set(cacheKey, JSON.stringify(payload), { EX: 30 });
+      await redis.set(cacheKey, JSON.stringify(payload), { EX: 120 });
     }
   } catch {
     // Ignore cache errors.

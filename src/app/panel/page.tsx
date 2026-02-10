@@ -228,7 +228,7 @@ const PanelPage = () => {
         <StatsCard
           title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail={viewMode === "live" ? "Clean cache (30 sn)" : "Seçilen gün"}
+          detail={viewMode === "live" ? "Clean cache (120 sn)" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
@@ -237,7 +237,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (30 sn)"
+              ? "Clean cache (120 sn)"
               : "Referrer boş (direct)"
           }
           accent="text-cyan-700"
@@ -247,7 +247,9 @@ const PanelPage = () => {
           title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Pageview`}
           value={`${metrics?.daily_pageviews ?? 0}`}
           detail={
-            viewMode === "live" ? "Clean cache (30 sn)" : "Deduped görüntülenme"
+            viewMode === "live"
+              ? "Clean cache (120 sn)"
+              : "Deduped görüntülenme"
           }
           accent="text-indigo-700"
           tone="bg-indigo-50"
