@@ -53,7 +53,12 @@ type LandingResult = {
   } | null;
 };
 
-const formatDateInput = (date: Date) => date.toISOString().split("T")[0];
+const formatDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 const daysAgo = (days: number) => {
   const date = new Date();
@@ -65,15 +70,14 @@ const normalizeLandingInput = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
   try {
-    const parsed = new URL(trimmed);
-    return parsed.pathname;
+    const parsed = trimmed.startsWith("http")
+      ? new URL(trimmed)
+      : new URL(trimmed, "https://example.com");
+    return parsed.pathname || "/";
   } catch {
-    try {
-      const parsed = new URL(trimmed, "https://example.com");
-      return parsed.pathname;
-    } catch {
-      return "";
-    }
+    const withoutQuery = trimmed.split("?")[0].split("#")[0].trim();
+    if (!withoutQuery) return "";
+    return withoutQuery.startsWith("/") ? withoutQuery : `/${withoutQuery}`;
   }
 };
 
@@ -439,7 +443,14 @@ export default function SourceAnalysisPage() {
           );
           const payload = await response.json();
           if (!response.ok) {
-            throw new Error(payload.error ?? "Analiz başarısız.");
+            const rawError =
+              typeof payload?.error === "string"
+                ? payload.error
+                : "Analiz başarısız.";
+            if (rawError.toLowerCase().includes("expected pattern")) {
+              throw new Error("Haber URL geçersiz.");
+            }
+            throw new Error(rawError);
           }
 
           const breakdownResponse = await fetch(
