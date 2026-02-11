@@ -258,6 +258,16 @@ const PanelPage = () => {
             })}
           </span>
         )}
+        {metrics?.record_updated_at && (
+          <span>
+            Cache zamanı:{" "}
+            {new Date(metrics.record_updated_at).toLocaleString("tr-TR", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </span>
+        )}
       </div>
       {viewMode === "live" && metrics?.as_of_local && (
         <p className="text-xs text-slate-500">
