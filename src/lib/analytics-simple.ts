@@ -17,6 +17,17 @@ const normalizeUrl = (value: string) => {
   }
 };
 
+const CAMPAIGN_KEYS = new Set([
+  "gclid",
+  "fbclid",
+  "igshid",
+  "msclkid",
+  "yclid",
+  "_openstat",
+  "pc_source",
+  "pc_cat",
+]);
+
 const hasCampaignParams = (value: string) => {
   try {
     const parsed = new URL(value, "https://example.com");
@@ -24,16 +35,7 @@ const hasCampaignParams = (value: string) => {
     for (const key of params.keys()) {
       const normalized = key.toLowerCase();
       if (normalized.startsWith("utm_")) return true;
-      if (
-        normalized === "gclid" ||
-        normalized === "fbclid" ||
-        normalized === "igshid" ||
-        normalized === "msclkid" ||
-        normalized === "yclid" ||
-        normalized === "_openstat" ||
-        normalized === "pc_source" ||
-        normalized === "pc_cat"
-      ) {
+      if (CAMPAIGN_KEYS.has(normalized)) {
         return true;
       }
     }
@@ -54,10 +56,31 @@ const hasCampaignParams = (value: string) => {
   }
 };
 
+const hasCampaignEventData = (value: unknown) => {
+  if (!value || typeof value !== "object") return false;
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    const normalized = key.toLowerCase();
+    if (normalized.startsWith("utm_")) return true;
+    if (CAMPAIGN_KEYS.has(normalized)) return true;
+  }
+  return false;
+};
+
+const normalizeHost = (value: string | null) => {
+  if (!value) return "";
+  try {
+    const parsed = new URL(value, "https://example.com");
+    return parsed.hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return value.replace(/^www\./, "").toLowerCase();
+  }
+};
+
 type SimpleEvent = {
   visitorId: string;
   url: string;
   referrer: string | null;
+  eventData: unknown;
   createdAt: Date;
   clientTimestamp: Date | null;
   countryCode: string | null;
@@ -70,8 +93,23 @@ type PingEvent = {
   eventData: unknown;
 };
 
-const resolveEventTimestamp = (event: SimpleEvent) =>
-  event.clientTimestamp ?? event.createdAt;
+const extractPcSource = (value: unknown) => {
+  if (!value || typeof value !== "object") return null;
+  const raw = (value as Record<string, unknown>).pc_source;
+  return typeof raw === "string" ? raw : null;
+};
+
+const resolveEventTimestamp = (event: {
+  createdAt: Date;
+  clientTimestamp: Date | null;
+  eventData: unknown;
+}) => {
+  const pcSource = extractPcSource(event.eventData);
+  if (pcSource === "popcent") {
+    return event.createdAt;
+  }
+  return event.clientTimestamp ?? event.createdAt;
+};
 
 const dedupeEvents = (events: SimpleEvent[]) => {
   const seen = new Map<string, number>();
@@ -159,6 +197,11 @@ const computeVisitorTime = (timestamps: Date[]) => {
 
 export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => {
   const { start, end, dayString } = getIstanbulDayRange(dayDate);
+  await prisma.analyticsWebsite.findUnique({
+    where: { id: siteId },
+    select: { id: true },
+  });
+
   const isInDay = (event: SimpleEvent) => {
     const ts = resolveEventTimestamp(event).getTime();
     return ts >= start.getTime() && ts <= end.getTime();
@@ -182,6 +225,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
       visitorId: true,
       url: true,
       referrer: true,
+      eventData: true,
       createdAt: true,
       clientTimestamp: true,
       countryCode: true,
@@ -203,6 +247,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
           visitorId: true,
           url: true,
           referrer: true,
+          eventData: true,
           createdAt: true,
           clientTimestamp: true,
           countryCode: true,
@@ -247,7 +292,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
       });
 
   const pingEvents = pingEventsSource.filter((event) => {
-    const ts = (event.clientTimestamp ?? event.createdAt).getTime();
+    const ts = resolveEventTimestamp(event).getTime();
     return ts >= start.getTime() && ts <= end.getTime();
   });
 
@@ -298,8 +343,16 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     uniqueVisitors.add(visitorId);
     totalVisitorSeconds += observedSeconds;
     totalVisitorCounted += 1;
-    if (first && first.referrer === "" && !hasCampaignParams(first.url)) {
-      directUnique += 1;
+    if (first) {
+      const referrer = first.referrer ?? "";
+      const isEmptyReferrer = referrer.trim() === "";
+      const hasCampaign =
+        hasCampaignParams(first.url) ||
+        hasCampaignParams(referrer) ||
+        hasCampaignEventData(first.eventData);
+      if (isEmptyReferrer && !hasCampaign) {
+        directUnique += 1;
+      }
     }
   }
 
