@@ -41,6 +41,10 @@ const PanelPage = () => {
     daily_avg_time_on_site_seconds_per_unique: number;
     daily_popcent_unique_users?: number;
     daily_popcent_pageviews?: number;
+    as_of_local?: string;
+    as_of_utc?: string;
+    record_updated_at?: string | null;
+    day_start_local?: string;
   } | null>(null);
   const [topPages, setTopPages] = useState<
     { url: string; pageviews: number; uniqueVisitors: number }[]
@@ -223,6 +227,14 @@ const PanelPage = () => {
       <p className="text-xs text-slate-400">
         Veriler arka planda 20 saniyede bir güncellenir.
       </p>
+      {viewMode === "live" && metrics?.as_of_local && (
+        <p className="text-xs text-slate-500">
+          Anlık veri zamanı: {metrics.as_of_local}{" "}
+          {metrics.record_updated_at
+            ? `(cache: ${new Date(metrics.record_updated_at).toLocaleString("tr-TR")})`
+            : ""}
+        </p>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatsCard

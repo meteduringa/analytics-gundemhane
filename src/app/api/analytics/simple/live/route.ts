@@ -37,9 +37,31 @@ export async function GET(request: Request) {
     },
   });
 
+  const now = new Date();
+  const istanbulFormatter = new Intl.DateTimeFormat("tr-TR", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const asOfLocal = istanbulFormatter.format(now);
+  const dayStartLocal = new Intl.DateTimeFormat("tr-TR", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(start);
+
   const payload = {
     siteId,
     day: start.toISOString().split("T")[0],
+    day_start_local: dayStartLocal,
+    as_of_local: asOfLocal,
+    as_of_utc: now.toISOString(),
+    record_updated_at: record?.updatedAt?.toISOString() ?? null,
     daily_unique_users: record?.dailyUniqueUsers ?? 0,
     daily_direct_unique_users: record?.dailyDirectUniqueUsers ?? 0,
     daily_pageviews: record?.dailyPageviews ?? 0,
