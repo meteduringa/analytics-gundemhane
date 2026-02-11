@@ -50,6 +50,7 @@ const PanelPage = () => {
     { url: string; pageviews: number; uniqueVisitors: number }[]
   >([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const refreshSeq = useRef(0);
   const activeController = useRef<AbortController | null>(null);
 
@@ -102,6 +103,7 @@ const PanelPage = () => {
       const payload = await response.json();
       if (response.ok && seq === refreshSeq.current) {
         setMetrics(payload);
+        setLastUpdatedAt(new Date());
       }
 
       const topPagesResponse = await topPagesPromise;
@@ -244,9 +246,19 @@ const PanelPage = () => {
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
       )}
-      <p className="text-xs text-slate-400">
-        Veriler arka planda 20 saniyede bir güncellenir.
-      </p>
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+        <span>Veriler arka planda 20 saniyede bir güncellenir.</span>
+        {lastUpdatedAt && (
+          <span>
+            Son güncelleme:{" "}
+            {lastUpdatedAt.toLocaleString("tr-TR", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </span>
+        )}
+      </div>
       {viewMode === "live" && metrics?.as_of_local && (
         <p className="text-xs text-slate-500">
           Anlık veri zamanı: {metrics.as_of_local}{" "}
