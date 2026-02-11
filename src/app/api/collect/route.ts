@@ -233,14 +233,20 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       typeof payload.event_data === "string"
         ? JSON.parse(payload.event_data)
         : payload.event_data ?? undefined;
-    const payloadPcSource =
-      asString(payload.pc_source) ??
-      (isPlainObject(eventData) ? asString(eventData.pc_source) : null);
-    const payloadPcCat =
-      asString(payload.pc_cat) ??
-      (isPlainObject(eventData) ? asString(eventData.pc_cat) : null);
-    const enrichedEventData = (() => {
-      const extra: Record<string, unknown> = {};
+  const payloadPcSource =
+    asString(payload.pc_source) ??
+    (isPlainObject(eventData) ? asString(eventData.pc_source) : null);
+  const payloadPcCat =
+    asString(payload.pc_cat) ??
+    (isPlainObject(eventData) ? asString(eventData.pc_cat) : null);
+  const payloadPageTitle =
+    asString(payload.page_title) ??
+    (isPlainObject(eventData) ? asString(eventData.page_title) : null);
+  const payloadPageCategory =
+    asString(payload.page_category) ??
+    (isPlainObject(eventData) ? asString(eventData.page_category) : null);
+  const enrichedEventData = (() => {
+    const extra: Record<string, unknown> = {};
       const finalPcSource = payloadPcSource ?? popcentMeta.pc_source;
       const finalPcCat = payloadPcCat ?? popcentMeta.pc_cat;
       if (finalPcSource === "popcent" && popcentSiteId) {
@@ -252,9 +258,15 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
       if (finalPcSource) {
         extra.pc_source = finalPcSource;
       }
-      if (finalPcCat) {
-        extra.pc_cat = finalPcCat;
-      }
+    if (finalPcCat) {
+      extra.pc_cat = finalPcCat;
+    }
+    if (payloadPageTitle) {
+      extra.page_title = payloadPageTitle;
+    }
+    if (payloadPageCategory) {
+      extra.page_category = payloadPageCategory;
+    }
       if (!Object.keys(extra).length) {
         return eventData;
       }

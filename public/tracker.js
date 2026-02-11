@@ -54,6 +54,45 @@
       }
       return info;
     };
+
+    const getMetaContent = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const value = element.getAttribute("content") ?? "";
+      return value.trim() || null;
+    };
+
+    const getPageCategory = () => {
+      const attrCategory =
+        script.getAttribute("data-page-category") ||
+        document.documentElement.getAttribute("data-page-category");
+      if (attrCategory && attrCategory.trim()) return attrCategory.trim();
+      const metaCategory =
+        getMetaContent('meta[property="article:section"]') ||
+        getMetaContent('meta[name="article:section"]') ||
+        getMetaContent('meta[name="section"]') ||
+        getMetaContent('meta[name="category"]') ||
+        getMetaContent('meta[property="og:section"]');
+      if (metaCategory) return metaCategory;
+      const domCategory =
+        document.querySelector('[itemprop="articleSection"]')?.textContent ||
+        document.querySelector("[data-category]")?.getAttribute("data-category") ||
+        "";
+      return domCategory.trim() || null;
+    };
+
+    const getPageTitle = () => {
+      const attrTitle =
+        script.getAttribute("data-page-title") ||
+        document.documentElement.getAttribute("data-page-title");
+      if (attrTitle && attrTitle.trim()) return attrTitle.trim();
+      const metaTitle =
+        getMetaContent('meta[property="og:title"]') ||
+        getMetaContent('meta[name="title"]');
+      if (metaTitle) return metaTitle;
+      const domTitle = (document.title || "").trim();
+      return domTitle || null;
+    };
     let pingTimeouts = [];
     let pingInterval = null;
     let lastPageviewTs = null;
@@ -227,6 +266,8 @@
       const pcMeta = getStoredPcMeta();
       if (pcMeta?.pc_source) payload.pc_source = pcMeta.pc_source;
       if (pcMeta?.pc_cat) payload.pc_cat = pcMeta.pc_cat;
+      payload.page_title = getPageTitle();
+      payload.page_category = getPageCategory();
       payload.website_id = websiteId;
       payload.visitor_id = getVisitorId();
       payload.session_id = getSessionId();

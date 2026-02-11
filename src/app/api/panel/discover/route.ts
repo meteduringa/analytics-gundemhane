@@ -91,13 +91,16 @@ export async function GET(request: Request) {
   const pathExpr = Prisma.sql`trim(both '/' from split_part(e."url", '?', 1))`;
   const firstSegment = Prisma.sql`split_part(${pathExpr}, '/', 1)`;
   const secondSegment = Prisma.sql`split_part(${pathExpr}, '/', 2)`;
-  const categoryExpr = Prisma.sql`
+  const fallbackCategoryExpr = Prisma.sql`
     CASE
       WHEN ${firstSegment} IN ('haberler', 'kategori', 'category', 'news')
         AND ${secondSegment} <> '' THEN ${secondSegment}
       WHEN ${firstSegment} ~ '^[0-9]+$' OR ${firstSegment} = '' THEN 'genel'
       ELSE ${firstSegment}
     END
+  `;
+  const categoryExpr = Prisma.sql`
+    COALESCE(NULLIF(e."eventData"->>'page_category', ''), ${fallbackCategoryExpr})
   `;
 
   const conditions: Prisma.Sql[] = [
