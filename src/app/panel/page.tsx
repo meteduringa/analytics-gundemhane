@@ -5,7 +5,7 @@ import FiltersBar from "@/components/dashboard/FiltersBar";
 import StatsCard from "@/components/dashboard/StatsCard";
 import { formatDuration } from "@/lib/formatDuration";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const formatDateInput = (date: Date) => {
   const year = date.getFullYear();
@@ -50,6 +50,8 @@ const PanelPage = () => {
     { url: string; pageviews: number; uniqueVisitors: number }[]
   >([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshSeq = useRef(0);
+  const activeController = useRef<AbortController | null>(null);
 
   const refreshAll = async (
     siteId: string,
@@ -61,6 +63,13 @@ const PanelPage = () => {
     if (!silent) {
       setIsRefreshing(true);
     }
+    refreshSeq.current += 1;
+    const seq = refreshSeq.current;
+    if (activeController.current) {
+      activeController.current.abort();
+    }
+    const controller = new AbortController();
+    activeController.current = controller;
     const params = new URLSearchParams({
       siteId,
       date: dateValue,
@@ -75,28 +84,39 @@ const PanelPage = () => {
       limit: "30",
     });
 
-    const metricsPromise =
-      viewMode === "live"
-        ? fetch(`/api/analytics/simple/live?${liveParams.toString()}`)
-        : fetch(`/api/analytics/simple/day?${params.toString()}`);
-    const topPagesPromise = fetch(
-      `/api/panel/top-pages?${topPagesParams.toString()}`
-    );
+    try {
+      const metricsPromise =
+        viewMode === "live"
+          ? fetch(`/api/analytics/simple/live?${liveParams.toString()}`, {
+              signal: controller.signal,
+            })
+          : fetch(`/api/analytics/simple/day?${params.toString()}`, {
+              signal: controller.signal,
+            });
+      const topPagesPromise = fetch(
+        `/api/panel/top-pages?${topPagesParams.toString()}`,
+        { signal: controller.signal }
+      );
 
-    const response = await metricsPromise;
-    const payload = await response.json();
-    if (response.ok) {
-      setMetrics(payload);
-    }
+      const response = await metricsPromise;
+      const payload = await response.json();
+      if (response.ok && seq === refreshSeq.current) {
+        setMetrics(payload);
+      }
 
-    if (!silent) {
-      setIsRefreshing(false);
-    }
-
-    const topPagesResponse = await topPagesPromise;
-    const topPagesPayload = await topPagesResponse.json();
-    if (topPagesResponse.ok) {
-      setTopPages(topPagesPayload.pages ?? []);
+      const topPagesResponse = await topPagesPromise;
+      const topPagesPayload = await topPagesResponse.json();
+      if (topPagesResponse.ok && seq === refreshSeq.current) {
+        setTopPages(topPagesPayload.pages ?? []);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+    } finally {
+      if (!silent) {
+        setIsRefreshing(false);
+      }
     }
   };
 
