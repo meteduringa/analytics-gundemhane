@@ -45,6 +45,8 @@ type ComboRow = {
   loyal_pageviews: bigint;
 };
 
+const LOYAL_MIN_DAILY_PAGEVIEWS = 3;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const websiteId = searchParams.get("websiteId");
@@ -126,18 +128,27 @@ export async function GET(request: Request) {
       FROM "analytics_events" e
       WHERE ${whereClause}
     ),
+    daily_by_date AS (
+      SELECT
+        visitor_id,
+        created_local::date AS day,
+        COUNT(*) AS day_pageviews
+      FROM events
+      GROUP BY visitor_id, created_local::date
+    ),
     daily AS (
       SELECT
         visitor_id,
-        COUNT(*) AS pageviews,
-        COUNT(DISTINCT created_local::date) AS days_seen
-      FROM events
+        COUNT(*) AS days_seen,
+        MIN(day_pageviews) AS min_daily_pageviews
+      FROM daily_by_date
       GROUP BY visitor_id
     ),
     loyal AS (
       SELECT visitor_id
       FROM daily
       WHERE days_seen >= ${totalDays}
+        AND min_daily_pageviews >= ${LOYAL_MIN_DAILY_PAGEVIEWS}
     )
     SELECT
       (SELECT COUNT(DISTINCT visitor_id) FROM events) AS total_unique,
@@ -157,18 +168,27 @@ export async function GET(request: Request) {
       FROM "analytics_events" e
       WHERE ${whereClause}
     ),
+    daily_by_date AS (
+      SELECT
+        visitor_id,
+        created_local::date AS day,
+        COUNT(*) AS day_pageviews
+      FROM events
+      GROUP BY visitor_id, created_local::date
+    ),
     daily AS (
       SELECT
         visitor_id,
-        COUNT(*) AS pageviews,
-        COUNT(DISTINCT created_local::date) AS days_seen
-      FROM events
+        COUNT(*) AS days_seen,
+        MIN(day_pageviews) AS min_daily_pageviews
+      FROM daily_by_date
       GROUP BY visitor_id
     ),
     loyal AS (
       SELECT visitor_id
       FROM daily
       WHERE days_seen >= ${totalDays}
+        AND min_daily_pageviews >= ${LOYAL_MIN_DAILY_PAGEVIEWS}
     )
     SELECT
       category,
@@ -190,18 +210,27 @@ export async function GET(request: Request) {
       FROM "analytics_events" e
       WHERE ${whereClause}
     ),
+    daily_by_date AS (
+      SELECT
+        visitor_id,
+        created_local::date AS day,
+        COUNT(*) AS day_pageviews
+      FROM events
+      GROUP BY visitor_id, created_local::date
+    ),
     daily AS (
       SELECT
         visitor_id,
-        COUNT(*) AS pageviews,
-        COUNT(DISTINCT created_local::date) AS days_seen
-      FROM events
+        COUNT(*) AS days_seen,
+        MIN(day_pageviews) AS min_daily_pageviews
+      FROM daily_by_date
       GROUP BY visitor_id
     ),
     loyal AS (
       SELECT visitor_id
       FROM daily
       WHERE days_seen >= ${totalDays}
+        AND min_daily_pageviews >= ${LOYAL_MIN_DAILY_PAGEVIEWS}
     )
     SELECT
       hour,
@@ -222,18 +251,27 @@ export async function GET(request: Request) {
       FROM "analytics_events" e
       WHERE ${whereClause}
     ),
+    daily_by_date AS (
+      SELECT
+        visitor_id,
+        created_local::date AS day,
+        COUNT(*) AS day_pageviews
+      FROM events
+      GROUP BY visitor_id, created_local::date
+    ),
     daily AS (
       SELECT
         visitor_id,
-        COUNT(*) AS pageviews,
-        COUNT(DISTINCT created_local::date) AS days_seen
-      FROM events
+        COUNT(*) AS days_seen,
+        MIN(day_pageviews) AS min_daily_pageviews
+      FROM daily_by_date
       GROUP BY visitor_id
     ),
     loyal AS (
       SELECT visitor_id
       FROM daily
       WHERE days_seen >= ${totalDays}
+        AND min_daily_pageviews >= ${LOYAL_MIN_DAILY_PAGEVIEWS}
     )
     SELECT
       category,
