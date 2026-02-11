@@ -17,6 +17,43 @@ const normalizeUrl = (value: string) => {
   }
 };
 
+const hasCampaignParams = (value: string) => {
+  try {
+    const parsed = new URL(value, "https://example.com");
+    const params = parsed.searchParams;
+    for (const key of params.keys()) {
+      const normalized = key.toLowerCase();
+      if (normalized.startsWith("utm_")) return true;
+      if (
+        normalized === "gclid" ||
+        normalized === "fbclid" ||
+        normalized === "igshid" ||
+        normalized === "msclkid" ||
+        normalized === "yclid" ||
+        normalized === "_openstat" ||
+        normalized === "pc_source" ||
+        normalized === "pc_cat"
+      ) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    const lowered = value.toLowerCase();
+    return (
+      lowered.includes("utm_") ||
+      lowered.includes("gclid=") ||
+      lowered.includes("fbclid=") ||
+      lowered.includes("igshid=") ||
+      lowered.includes("msclkid=") ||
+      lowered.includes("yclid=") ||
+      lowered.includes("_openstat=") ||
+      lowered.includes("pc_source=") ||
+      lowered.includes("pc_cat=")
+    );
+  }
+};
+
 type SimpleEvent = {
   visitorId: string;
   url: string;
@@ -261,7 +298,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     uniqueVisitors.add(visitorId);
     totalVisitorSeconds += observedSeconds;
     totalVisitorCounted += 1;
-    if (first && first.referrer === "") {
+    if (first && first.referrer === "" && !hasCampaignParams(first.url)) {
       directUnique += 1;
     }
   }

@@ -27,6 +27,21 @@ type CategoryRow = {
   share: number;
 };
 
+type ArticleRow = {
+  url: string;
+  title: string | null;
+  totalPageviews: number;
+  totalUnique: number;
+  sources: {
+    direct: { pageviews: number; unique: number };
+    facebook: { pageviews: number; unique: number };
+    instagram: { pageviews: number; unique: number };
+    googleSearch: { pageviews: number; unique: number };
+    googleDiscover: { pageviews: number; unique: number };
+    other: { pageviews: number; unique: number };
+  };
+};
+
 type HourRow = {
   hour: number;
   loyalPageviews: number;
@@ -67,6 +82,10 @@ export default function DiscoverAnalysisPage() {
   const [byCategory, setByCategory] = useState<CategoryRow[]>([]);
   const [byHour, setByHour] = useState<HourRow[]>([]);
   const [byCategoryHour, setByCategoryHour] = useState<ComboRow[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [articles, setArticles] = useState<ArticleRow[]>([]);
+  const [articlesLoading, setArticlesLoading] = useState(false);
+  const [articlesError, setArticlesError] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -152,10 +171,42 @@ export default function DiscoverAnalysisPage() {
       setByCategory(payload.byCategory ?? []);
       setByHour(payload.byHour ?? []);
       setByCategoryHour(payload.byCategoryHour ?? []);
+      setSelectedCategory(null);
+      setArticles([]);
+      setArticlesError("");
     } catch {
       setError("Analiz sırasında hata oluştu.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadArticles = async (category: string) => {
+    if (!site) return;
+    setSelectedCategory(category);
+    setArticles([]);
+    setArticlesError("");
+    setArticlesLoading(true);
+    try {
+      const params = new URLSearchParams({
+        websiteId: site.id,
+        start: startDate,
+        end: endDate,
+        category,
+      });
+      const response = await fetch(
+        `/api/panel/discover-articles?${params.toString()}`
+      );
+      const payload = await response.json();
+      if (!response.ok) {
+        setArticlesError(payload.error ?? "Haber listesi alınamadı.");
+        return;
+      }
+      setArticles(payload.articles ?? []);
+    } catch {
+      setArticlesError("Haber listesi alınamadı.");
+    } finally {
+      setArticlesLoading(false);
     }
   };
 
@@ -261,12 +312,13 @@ export default function DiscoverAnalysisPage() {
                     <th className="px-3 py-2">Sadık PV</th>
                     <th className="px-3 py-2">Sadık Tekil</th>
                     <th className="px-3 py-2">Pay</th>
+                    <th className="px-3 py-2">Detay</th>
                   </tr>
                 </thead>
                 <tbody>
                   {byCategory.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-400">
+                      <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-400">
                         Sonuç bulunamadı.
                       </td>
                     </tr>
@@ -277,6 +329,15 @@ export default function DiscoverAnalysisPage() {
                         <td className="px-3 py-2 text-slate-700">{row.loyalPageviews}</td>
                         <td className="px-3 py-2 text-slate-700">{row.loyalUnique}</td>
                         <td className="px-3 py-2 text-slate-700">%{row.share}</td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => loadArticles(row.category)}
+                            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                          >
+                            İncele
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -361,6 +422,93 @@ export default function DiscoverAnalysisPage() {
                       <td className="px-3 py-2 text-slate-700">{row.hour}:00</td>
                       <td className="px-3 py-2 text-slate-700">{row.loyalPageviews}</td>
                       <td className="px-3 py-2 text-slate-700">%{row.share}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                Kategori Detayı
+              </p>
+              <h2 className="text-lg font-semibold text-slate-900">
+                {selectedCategory ? `${selectedCategory} Haberleri` : "Kategori seçin"}
+              </h2>
+            </div>
+            {selectedCategory && (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {selectedCategory}
+              </span>
+            )}
+          </div>
+
+          {articlesError && (
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {articlesError}
+            </div>
+          )}
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-3 py-2">Haber Başlığı</th>
+                  <th className="px-3 py-2">Toplam PV</th>
+                  <th className="px-3 py-2">Toplam Tekil</th>
+                  <th className="px-3 py-2">Facebook</th>
+                  <th className="px-3 py-2">Instagram</th>
+                  <th className="px-3 py-2">Google Search</th>
+                  <th className="px-3 py-2">Google Discover</th>
+                  <th className="px-3 py-2">Direkt</th>
+                  <th className="px-3 py-2">Diğer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {articlesLoading ? (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-400">
+                      Haberler yükleniyor...
+                    </td>
+                  </tr>
+                ) : articles.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-400">
+                      {selectedCategory
+                        ? "Bu kategori için haber bulunamadı."
+                        : "Kategori seçin."}
+                    </td>
+                  </tr>
+                ) : (
+                  articles.map((row) => (
+                    <tr key={row.url} className="border-b border-slate-100 last:border-none">
+                      <td className="px-3 py-2 font-medium text-slate-800">
+                        {row.title ?? row.url}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">{row.totalPageviews}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.totalUnique}</td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {row.sources.facebook.pageviews} / {row.sources.facebook.unique}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {row.sources.instagram.pageviews} / {row.sources.instagram.unique}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {row.sources.googleSearch.pageviews} / {row.sources.googleSearch.unique}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {row.sources.googleDiscover.pageviews} / {row.sources.googleDiscover.unique}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {row.sources.direct.pageviews} / {row.sources.direct.unique}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {row.sources.other.pageviews} / {row.sources.other.unique}
+                      </td>
                     </tr>
                   ))
                 )}
