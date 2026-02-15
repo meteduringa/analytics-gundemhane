@@ -163,7 +163,25 @@ export async function GET(request: Request) {
         e."sessionId" AS "sessionId",
         e."visitorId" AS "visitorId",
         (e."eventData"->>'source_website_id') AS source_website_id,
-        NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), '') AS referrer_host
+        CASE
+          -- Some in-app browsers / redirects drop referrer completely.
+          -- If we still have strong campaign hints in the landing URL, classify those as social instead of [DIRECT].
+          WHEN (e."referrer" IS NULL OR e."referrer" = '')
+            AND (
+              e."url" ILIKE '%fbclid=%'
+              OR e."url" ILIKE '%utm_source=fb%'
+              OR e."url" ILIKE '%utm_source=facebook%'
+            )
+            THEN 'facebook.com'
+          WHEN (e."referrer" IS NULL OR e."referrer" = '')
+            AND (
+              e."url" ILIKE '%igshid=%'
+              OR e."url" ILIKE '%utm_source=ig%'
+              OR e."url" ILIKE '%utm_source=instagram%'
+            )
+            THEN 'instagram.com'
+          ELSE NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), '')
+        END AS referrer_host
       FROM "analytics_events" e
       WHERE ${whereClause}
     ),

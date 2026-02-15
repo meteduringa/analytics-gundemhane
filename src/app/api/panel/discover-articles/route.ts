@@ -106,6 +106,22 @@ export async function GET(request: Request) {
 
   const sourceExpr = Prisma.sql`
     CASE
+      -- Some in-app browsers / redirects drop referrer completely.
+      -- If we still have strong campaign hints in the landing URL, classify those as social instead of direct.
+      WHEN (e."referrer" IS NULL OR e."referrer" = '')
+        AND (
+          e."url" ILIKE '%fbclid=%'
+          OR e."url" ILIKE '%utm_source=fb%'
+          OR e."url" ILIKE '%utm_source=facebook%'
+        )
+        THEN 'facebook'
+      WHEN (e."referrer" IS NULL OR e."referrer" = '')
+        AND (
+          e."url" ILIKE '%igshid=%'
+          OR e."url" ILIKE '%utm_source=ig%'
+          OR e."url" ILIKE '%utm_source=instagram%'
+        )
+        THEN 'instagram'
       WHEN e."referrer" IS NULL OR e."referrer" = '' THEN 'direct'
       WHEN e."referrer" ILIKE '%facebook.com%' OR e."referrer" ILIKE '%l.facebook.com%'
         OR e."referrer" ILIKE '%lm.facebook.com%' OR e."referrer" ILIKE '%m.facebook.com%'
