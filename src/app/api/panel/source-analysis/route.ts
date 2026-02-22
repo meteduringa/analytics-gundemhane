@@ -94,19 +94,23 @@ export async function GET(request: Request) {
     );
   }
 
-  const normalizedStart = startValue ? normalizeDateInput(startValue) : null;
-  const normalizedEnd = endValue ? normalizeDateInput(endValue) : null;
   const startDate = parseFilterDate(startValue);
   const endDate = parseFilterDate(endValue, true);
-  if (startValue && !normalizedStart) {
+  if (startValue && !startDate) {
     return NextResponse.json(
       { error: "Başlangıç tarihi geçersiz." },
       { status: 400 }
     );
   }
-  if (endValue && !normalizedEnd) {
+  if (endValue && !endDate) {
     return NextResponse.json(
       { error: "Bitiş tarihi geçersiz." },
+      { status: 400 }
+    );
+  }
+  if (startDate && endDate && startDate > endDate) {
+    return NextResponse.json(
+      { error: "Başlangıç tarihi bitiş tarihinden büyük olamaz." },
       { status: 400 }
     );
   }
@@ -116,10 +120,6 @@ export async function GET(request: Request) {
     POPCENT_REFERRER_HOSTS.map((host) => Prisma.sql`${host}`),
     ", "
   );
-
-  const createdAtLocal = Prisma.sql`(e."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')`;
-  const startTs = normalizedStart ? `${normalizedStart} 00:00:00` : null;
-  const endTs = normalizedEnd ? `${normalizedEnd} 23:59:59` : null;
 
   const conditions: Prisma.Sql[] = [
     Prisma.sql`e."websiteId" = ${websiteId}`,
@@ -139,15 +139,11 @@ export async function GET(request: Request) {
     `);
   }
 
-  if (startTs) {
-    conditions.push(
-      Prisma.sql`${createdAtLocal} >= to_timestamp(${startTs}, 'YYYY-MM-DD HH24:MI:SS')`
-    );
+  if (startDate) {
+    conditions.push(Prisma.sql`e."createdAt" >= ${startDate}`);
   }
-  if (endTs) {
-    conditions.push(
-      Prisma.sql`${createdAtLocal} <= to_timestamp(${endTs}, 'YYYY-MM-DD HH24:MI:SS')`
-    );
+  if (endDate) {
+    conditions.push(Prisma.sql`e."createdAt" <= ${endDate}`);
   }
   if (landingPath) {
     conditions.push(

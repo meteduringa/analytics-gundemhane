@@ -401,6 +401,21 @@ export default function SourceAnalysisPage() {
     setIsLoading(true);
     setError("");
     try {
+      const normalizeApiError = (value: unknown) => {
+        const raw =
+          typeof value === "string" && value.trim()
+            ? value.trim()
+            : "Analiz başarısız.";
+        const lower = raw.toLowerCase();
+        if (
+          lower.includes("expected pattern") ||
+          lower.includes("did not match the expected pattern")
+        ) {
+          return "Haber URL geçersiz.";
+        }
+        return raw;
+      };
+
       let itemsToAnalyze = landingItems;
       if (!itemsToAnalyze.length && landingInput.trim()) {
         const normalizedLanding = normalizeLandingInput(landingInput);
@@ -443,20 +458,16 @@ export default function SourceAnalysisPage() {
           );
           const payload = await response.json();
           if (!response.ok) {
-            const rawError =
-              typeof payload?.error === "string"
-                ? payload.error
-                : "Analiz başarısız.";
-            if (rawError.toLowerCase().includes("expected pattern")) {
-              throw new Error("Haber URL geçersiz.");
-            }
-            throw new Error(rawError);
+            throw new Error(normalizeApiError(payload?.error));
           }
 
           const breakdownResponse = await fetch(
             `/api/panel/source-breakdown?${params.toString()}`
           );
           const breakdownPayload = await breakdownResponse.json();
+          if (!breakdownResponse.ok) {
+            throw new Error(normalizeApiError(breakdownPayload?.error));
+          }
 
           results[item.id] = {
             sources: payload.sources ?? [],
@@ -471,7 +482,16 @@ export default function SourceAnalysisPage() {
 
       setLandingResults(results);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Analiz başarısız.");
+      const rawMessage = err instanceof Error ? err.message : "Analiz başarısız.";
+      const lower = rawMessage.toLowerCase();
+      if (
+        lower.includes("expected pattern") ||
+        lower.includes("did not match the expected pattern")
+      ) {
+        setError("Haber URL geçersiz.");
+      } else {
+        setError(rawMessage);
+      }
     } finally {
       setIsLoading(false);
     }
