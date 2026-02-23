@@ -207,14 +207,6 @@ export default function SourceAnalysisPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!ready) return;
-    if (!selectedSiteId) return;
-    if (!landingItems.length) return;
-    if (Object.keys(landingResults).length) return;
-    void loadSources();
-  }, [ready, selectedSiteId, landingItems, landingResults]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const existingRaw = window.localStorage.getItem(storageKey);
     let landingItemsBySite: Record<string, LandingItem[]> = {};
@@ -646,7 +638,7 @@ export default function SourceAnalysisPage() {
               className="mb-1 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               disabled={isLoading}
             >
-              {isLoading ? "Analiz ediliyor..." : "Analiz Et"}
+              {isLoading ? "Veriler getiriliyor..." : "Verileri Getir"}
             </button>
           </div>
         </div>
