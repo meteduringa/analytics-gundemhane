@@ -1,7 +1,7 @@
 "use client";
 
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Site = {
@@ -133,6 +133,7 @@ export default function SourceAnalysisPage() {
   const [error, setError] = useState("");
   const [copiedShort, setCopiedShort] = useState(false);
   const [copiedLong, setCopiedLong] = useState(false);
+  const analysisRequestRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -398,6 +399,7 @@ export default function SourceAnalysisPage() {
 
   const loadSources = async () => {
     if (!selectedSiteId) return;
+    const requestId = ++analysisRequestRef.current;
     setIsLoading(true);
     setError("");
     try {
@@ -453,18 +455,17 @@ export default function SourceAnalysisPage() {
             popcentOnly: popcentOnly ? "1" : "0",
           });
 
-          const response = await fetch(
-            `/api/panel/source-analysis?${params.toString()}`
-          );
-          const payload = await response.json();
-          if (!response.ok) {
+          const [sourceResponse, breakdownResponse] = await Promise.all([
+            fetch(`/api/panel/source-analysis?${params.toString()}`),
+            fetch(`/api/panel/source-breakdown?${params.toString()}`),
+          ]);
+
+          const payload = await sourceResponse.json();
+          const breakdownPayload = await breakdownResponse.json();
+
+          if (!sourceResponse.ok) {
             throw new Error(normalizeApiError(payload?.error));
           }
-
-          const breakdownResponse = await fetch(
-            `/api/panel/source-breakdown?${params.toString()}`
-          );
-          const breakdownPayload = await breakdownResponse.json();
           if (!breakdownResponse.ok) {
             throw new Error(normalizeApiError(breakdownPayload?.error));
           }
@@ -480,8 +481,13 @@ export default function SourceAnalysisPage() {
         })
       );
 
-      setLandingResults(results);
+      if (analysisRequestRef.current === requestId) {
+        setLandingResults(results);
+      }
     } catch (err) {
+      if (analysisRequestRef.current !== requestId) {
+        return;
+      }
       const rawMessage = err instanceof Error ? err.message : "Analiz başarısız.";
       const lower = rawMessage.toLowerCase();
       if (
@@ -493,7 +499,9 @@ export default function SourceAnalysisPage() {
         setError(rawMessage);
       }
     } finally {
-      setIsLoading(false);
+      if (analysisRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   };
 
