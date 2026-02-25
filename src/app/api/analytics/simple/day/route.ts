@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { parseDayParam } from "@/lib/bik-time";
 import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
 import { getIstanbulDayRange } from "@/lib/bik-time";
-import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -30,39 +29,7 @@ export async function GET(request: Request) {
     },
   });
 
-  const popcentHostList = Prisma.join(
-    [
-      "ppcnt.org",
-      "ppcnt.net",
-      "ppcnt.live",
-      "ppcnt.us",
-      "ppcnt.co",
-      "ppcnt.eu",
-      "popcent.org",
-      "flarby.com",
-    ].map((host) => Prisma.sql`${host}`),
-    ", "
-  );
-
-  const popcentCounts = (await prisma.$queryRaw`
-    SELECT
-      COUNT(*) AS total_events,
-      COUNT(DISTINCT "visitorId") AS unique_visitors
-    FROM "analytics_events"
-    WHERE "websiteId" = ${siteId}
-      AND "type" = 'PAGEVIEW'
-      AND (
-        ("eventData"->>'pc_source' = 'popcent')
-        OR ("eventData"->>'source_website_id' IS NOT NULL AND "eventData"->>'source_website_id' <> '')
-        OR (COALESCE(NULLIF(regexp_replace("referrer", '^https?://([^/]+)/?.*$', '\\1'), ''), '') IN (${popcentHostList}))
-      )
-      AND (
-        ("createdAt" >= ${start} AND "createdAt" <= ${end})
-        OR ("clientTimestamp" >= ${start} AND "clientTimestamp" <= ${end})
-      );
-  `) as { total_events: bigint; unique_visitors: bigint }[];
-
-  const popcentSummary = popcentCounts[0] ?? {
+  const popcentSummary = {
     total_events: BigInt(0),
     unique_visitors: BigInt(0),
   };
