@@ -14,6 +14,21 @@ const formatDateInput = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const formatIstanbulDateTime = (value: Date | string | null | undefined) => {
+  if (!value) return "-";
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString("tr-TR", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+};
+
 const PanelPage = () => {
   const router = useRouter();
   const [dateInput, setDateInput] = useState(() =>
@@ -251,29 +266,22 @@ const PanelPage = () => {
         {lastUpdatedAt && (
           <span>
             Son güncelleme:{" "}
-            {lastUpdatedAt.toLocaleString("tr-TR", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })}
+            {formatIstanbulDateTime(lastUpdatedAt)}
           </span>
         )}
         {metrics?.record_updated_at && (
           <span>
             Cache zamanı:{" "}
-            {new Date(metrics.record_updated_at).toLocaleString("tr-TR", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })}
+            {formatIstanbulDateTime(metrics.record_updated_at)}
           </span>
         )}
       </div>
-      {viewMode === "live" && metrics?.as_of_local && (
+      {viewMode === "live" && (metrics?.as_of_utc || metrics?.as_of_local) && (
         <p className="text-xs text-slate-500">
-          Anlık veri zamanı: {metrics.as_of_local}{" "}
+          Anlık veri zamanı:{" "}
+          {formatIstanbulDateTime(metrics?.as_of_utc ?? metrics?.as_of_local)}{" "}
           {metrics.record_updated_at
-            ? `(cache: ${new Date(metrics.record_updated_at).toLocaleString("tr-TR")})`
+            ? `(cache: ${formatIstanbulDateTime(metrics.record_updated_at)})`
             : ""}
         </p>
       )}
