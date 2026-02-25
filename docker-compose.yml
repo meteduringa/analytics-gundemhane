@@ -1,7 +1,13 @@
-  version: "3.8"
+x-default-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
 
-  services:
+services:
     app:
+      <<: *default-logging
       build: .
       environment:
         NODE_ENV: production
@@ -20,6 +26,7 @@
       restart: unless-stopped
 
     postgres:
+      <<: *default-logging
       image: postgres:16
       environment:
         POSTGRES_DB: analytics
@@ -31,13 +38,26 @@
       restart: unless-stopped
 
     redis:
+      <<: *default-logging
       image: redis:7
-      command: ["redis-server", "--appendonly", "yes"]
+      command:
+        [
+          "redis-server",
+          "--appendonly",
+          "yes",
+          "--appendfsync",
+          "everysec",
+          "--auto-aof-rewrite-percentage",
+          "100",
+          "--auto-aof-rewrite-min-size",
+          "64mb",
+        ]
       volumes:
         - redis_data:/data
       restart: unless-stopped
 
     caddy:
+      <<: *default-logging
       image: caddy:2
       ports:
         - "80:80"
@@ -50,8 +70,8 @@
         - app
       restart: unless-stopped
 
-  volumes:
-    postgres_data:
-    redis_data:
-    caddy_data:
-    caddy_config:
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
