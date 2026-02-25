@@ -41,5 +41,15 @@ jobs:
               -e TZ='Europe/Istanbul' \
               analytics-app:latest
             docker restart analytics-caddy-1 >/dev/null 2>&1 || true
-            sleep 3
-            curl -fsS https://analytics.gundemhane.com/api/health >/dev/null
+            for i in $(seq 1 30); do
+              if curl -fsS https://analytics.gundemhane.com/api/health >/dev/null; then
+                echo "Health check passed."
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Health check failed after retries. Debug output:"
+            docker ps --format "table {{.Names}}\t{{.Status}}"
+            docker logs --tail=120 analytics-app-1 || true
+            docker logs --tail=120 analytics-caddy-1 || true
+            exit 1
