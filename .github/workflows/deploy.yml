@@ -20,8 +20,26 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            set -e
+            set -euo pipefail
             git config --global --add safe.directory /opt/analytics
             cd /opt/analytics
             git pull origin main
-            bash /opt/analytics/deploy.sh
+            docker build -t analytics-app:latest .
+            docker network inspect analytics_default >/dev/null 2>&1 || docker network create analytics_default
+            docker rm -f analytics-app-1 >/dev/null 2>&1 || true
+            docker run -d \
+              --name analytics-app-1 \
+              --restart unless-stopped \
+              --network analytics_default \
+              --network-alias app \
+              -e NODE_ENV=production \
+              -e DATABASE_URL='postgresql://analytics:Analytics2025Pass@analytics-postgres-1:5432/analytics?connection_limit=20&pool_timeout=60' \
+              -e AUTH_SECRET='change-me' \
+              -e NEXTAUTH_URL='https://analytics.gundemhane.com' \
+              -e NEXT_PUBLIC_HOST_URL='https://analytics.gundemhane.com' \
+              -e REDIS_URL='redis://analytics-redis-1:6379' \
+              -e TZ='Europe/Istanbul' \
+              analytics-app:latest
+            docker restart analytics-caddy-1 >/dev/null 2>&1 || true
+            sleep 3
+            curl -fsS https://analytics.gundemhane.com/api/health >/dev/null
