@@ -180,7 +180,7 @@ const PanelPage = () => {
   }, [selectedDate, selectedSiteId, viewMode]);
 
   useEffect(() => {
-    if (!user || user.role !== "CUSTOMER") return;
+    if (!user) return;
     if (!selectedSiteId) return;
     const interval = window.setInterval(() => {
       refreshAll(selectedSiteId, selectedDate, { silent: true });
@@ -290,7 +290,7 @@ const PanelPage = () => {
         <StatsCard
           title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail={viewMode === "live" ? "Clean cache (120 sn)" : "Seçilen gün"}
+          detail={viewMode === "live" ? "Clean cache (20 sn)" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
@@ -299,7 +299,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (120 sn)"
+              ? "Clean cache (20 sn)"
               : "Referrer boş (direct)"
           }
           accent="text-cyan-700"
@@ -310,7 +310,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_pageviews ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (120 sn)"
+              ? "Clean cache (20 sn)"
               : "Deduped görüntülenme"
           }
           accent="text-indigo-700"

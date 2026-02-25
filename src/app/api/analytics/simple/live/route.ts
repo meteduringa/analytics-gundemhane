@@ -20,7 +20,11 @@ export async function GET(request: Request) {
     if (redis) {
       const cached = await redis.get(cacheKey);
       if (cached) {
-        return NextResponse.json(JSON.parse(cached));
+        return NextResponse.json(JSON.parse(cached), {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+          },
+        });
       }
     }
   } catch {
@@ -74,11 +78,15 @@ export async function GET(request: Request) {
   try {
     const redis = await getRedis();
     if (redis) {
-      await redis.set(cacheKey, JSON.stringify(payload), { EX: 120 });
+      await redis.set(cacheKey, JSON.stringify(payload), { EX: 20 });
     }
   } catch {
     // Ignore cache errors.
   }
 
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    },
+  });
 }
