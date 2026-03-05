@@ -13,8 +13,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://analytics:Analytics2025Pass@postgres:5432/analytics
       AUTH_SECRET: change-me
-      NEXTAUTH_URL: https://analytics.gundemhane.com
-      NEXT_PUBLIC_HOST_URL: https://analytics.gundemhane.com
+      NEXTAUTH_URL: https://giris.elmasistatistik.com.tr
+      NEXT_PUBLIC_HOST_URL: https://giris.elmasistatistik.com.tr
       REDIS_URL: redis://redis:6379
       TZ: Europe/Istanbul
     dns:

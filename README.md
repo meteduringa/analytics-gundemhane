@@ -14,7 +14,7 @@ Gercek zamanli, cok kiracili web analytics sistemi.
 Bu sunucuda Node.js + PostgreSQL + Redis kurulu ve uygulama systemd ile calisiyor.
 
 - Uygulama: `http://localhost:3000`
-- Domain: `https://analytics.gundemhane.com`
+- Domain: `https://giris.elmasistatistik.com.tr`
 
 Servis durumu:
 
@@ -45,9 +45,9 @@ docker-compose up -d --build
 ## Tracking Snippet
 
 ```html
-<script async src="https://analytics.gundemhane.com/tracker.js"
+<script async src="https://giris.elmasistatistik.com.tr/tracker.js"
   data-website-id="UUID"
-  data-host-url="https://analytics.gundemhane.com">
+  data-host-url="https://giris.elmasistatistik.com.tr">
 </script>
 ```
 
@@ -65,18 +65,18 @@ Deploy tetikleme notu: bu satır otomatik yayına alınacaktır.
 ### BIK Tracker Snippet
 
 ```html
-<script async src="https://analytics.gundemhane.com/bik-tracker.js"
+<script async src="https://giris.elmasistatistik.com.tr/bik-tracker.js"
   data-site-id="UUID"
-  data-host-url="https://analytics.gundemhane.com">
+  data-host-url="https://giris.elmasistatistik.com.tr">
 </script>
 ```
 
 ### BIK_STRICT Tracker Snippet
 
 ```html
-<script async src="https://analytics.gundemhane.com/bik-strict-tracker.js"
+<script async src="https://giris.elmasistatistik.com.tr/bik-strict-tracker.js"
   data-site-id="UUID"
-  data-host-url="https://analytics.gundemhane.com">
+  data-host-url="https://giris.elmasistatistik.com.tr">
 </script>
 ```
 

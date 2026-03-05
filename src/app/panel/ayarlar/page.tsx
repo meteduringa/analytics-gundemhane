@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const hostUrl =
-  process.env.NEXT_PUBLIC_HOST_URL ?? "https://analytics.gundemhane.com";
+  process.env.NEXT_PUBLIC_HOST_URL ?? "https://giris.elmasistatistik.com.tr";
 
 const buildExternalSnippet = (websiteId: string) => `<script async fetchpriority="low" src="${hostUrl}/simple-tracker.js"
   data-site-id="${websiteId}"

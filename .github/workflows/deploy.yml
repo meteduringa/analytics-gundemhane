@@ -35,14 +35,14 @@ jobs:
               -e NODE_ENV=production \
               -e DATABASE_URL='postgresql://analytics:Analytics2025Pass@analytics-postgres-1:5432/analytics?connection_limit=20&pool_timeout=60' \
               -e AUTH_SECRET='change-me' \
-              -e NEXTAUTH_URL='https://analytics.gundemhane.com' \
-              -e NEXT_PUBLIC_HOST_URL='https://analytics.gundemhane.com' \
+              -e NEXTAUTH_URL='https://giris.elmasistatistik.com.tr' \
+              -e NEXT_PUBLIC_HOST_URL='https://giris.elmasistatistik.com.tr' \
               -e REDIS_URL='redis://analytics-redis-1:6379' \
               -e TZ='Europe/Istanbul' \
               analytics-app:latest
             docker restart analytics-caddy-1 >/dev/null 2>&1 || true
             for i in $(seq 1 30); do
-              if curl -fsS https://analytics.gundemhane.com/api/health >/dev/null; then
+              if curl -fsS https://giris.elmasistatistik.com.tr/api/health >/dev/null; then
                 echo "Health check passed."
                 exit 0
               fi

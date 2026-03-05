@@ -8,7 +8,7 @@
     var websiteId = currentScript && currentScript.getAttribute("data-website-id");
     var hostUrl =
       (currentScript && currentScript.getAttribute("data-host-url")) ||
-      "https://analytics.gundemhane.com";
+      "https://giris.elmasistatistik.com.tr";
 
     if (!websiteId) {
       return;
