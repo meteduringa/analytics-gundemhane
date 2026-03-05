@@ -23,7 +23,8 @@ jobs:
             set -euo pipefail
             git config --global --add safe.directory /opt/analytics
             cd /opt/analytics
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             docker build -t analytics-app:latest .
             docker network inspect analytics_default >/dev/null 2>&1 || docker network create analytics_default
             docker rm -f analytics-app-1 >/dev/null 2>&1 || true
