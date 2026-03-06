@@ -2,7 +2,3 @@ giris.elmasistatistik.com.tr {
     encode zstd gzip
     reverse_proxy app:3000
 }
-
-analytics.gundemhane.com {
-    redir https://giris.elmasistatistik.com.tr{uri} permanent
-}

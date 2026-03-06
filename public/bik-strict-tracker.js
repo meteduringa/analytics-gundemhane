@@ -3,7 +3,6 @@
   if (!script) return;
 
   const FALLBACK_HOST_URL = "https://giris.elmasistatistik.com.tr";
-  const LEGACY_HOSTNAME = "analytics.gundemhane.com";
   const normalizeHostUrl = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return "";
@@ -13,13 +12,7 @@
   };
   const resolveHostUrl = () => {
     const normalized = normalizeHostUrl(script.getAttribute("data-host-url") || "");
-    if (!normalized) return FALLBACK_HOST_URL;
-    try {
-      const parsed = new URL(normalized);
-      return parsed.hostname === LEGACY_HOSTNAME ? FALLBACK_HOST_URL : normalized;
-    } catch {
-      return FALLBACK_HOST_URL;
-    }
+    return normalized || FALLBACK_HOST_URL;
   };
 
   const siteId =

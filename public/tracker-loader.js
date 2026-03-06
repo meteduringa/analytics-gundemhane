@@ -1,6 +1,5 @@
   (function () {
     var fallbackHostUrl = "https://giris.elmasistatistik.com.tr";
-    var legacyHostname = "analytics.gundemhane.com";
     var normalizeHostUrl = function (value) {
       var raw = String(value || "").trim();
       if (!raw) return "";
@@ -10,14 +9,7 @@
     };
     var resolveHostUrl = function (value) {
       var normalized = normalizeHostUrl(value);
-      if (!normalized) return fallbackHostUrl;
-      try {
-        var parsed = new URL(normalized);
-        if (parsed.hostname === legacyHostname) return fallbackHostUrl;
-      } catch {
-        return fallbackHostUrl;
-      }
-      return normalized;
+      return normalized || fallbackHostUrl;
     };
 
     var currentScript = document.currentScript;
