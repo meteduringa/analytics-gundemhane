@@ -1,6 +1,6 @@
   "use client";
 
-  import { useMemo, useState } from "react";
+  import { useEffect, useMemo, useState } from "react";
   import Link from "next/link";
   import DataTable from "@/components/analytics/ui/DataTable";
   import EmptyState from "@/components/analytics/ui/EmptyState";
@@ -12,15 +12,23 @@
     createdAt: string;
   };
 
-  const hostUrl =
-    process.env.NEXT_PUBLIC_HOST_URL ?? "https://giris.elmasistatistik.com.tr";
+  const fallbackHostUrl = (
+    process.env.NEXT_PUBLIC_HOST_URL ?? "https://giris.elmasistatistik.com.tr"
+  ).replace(/\/+$/, "");
 
-const externalSnippetFor = (websiteId: string) => `<script async fetchpriority="low" src="${hostUrl}/simple-tracker.js"
+  const resolveSnippetHostUrl = () => {
+    if (typeof window !== "undefined" && window.location.origin) {
+      return window.location.origin.replace(/\/+$/, "");
+    }
+    return fallbackHostUrl;
+  };
+
+const externalSnippetFor = (websiteId: string, hostUrl: string) => `<script async fetchpriority="low" src="${hostUrl}/simple-tracker.js"
   data-site-id="${websiteId}"
   data-host-url="${hostUrl}">
 </script>`;
 
-  const inlineSnippetFor = (websiteId: string) => `<script data-site-id="${websiteId}" data-host-url="${hostUrl}">
+  const inlineSnippetFor = (websiteId: string, hostUrl: string) => `<script data-site-id="${websiteId}" data-host-url="${hostUrl}">
   (function () {
     var s = document.currentScript;
     if (!s) return;
@@ -220,8 +228,14 @@ const externalSnippetFor = (websiteId: string) => `<script async fetchpriority="
   })();
   </script>`;
 
-const snippetFor = (websiteId: string, mode: "external" | "inline") =>
-  mode === "inline" ? inlineSnippetFor(websiteId) : externalSnippetFor(websiteId);
+const snippetFor = (
+  websiteId: string,
+  mode: "external" | "inline",
+  hostUrl: string
+) =>
+  mode === "inline"
+    ? inlineSnippetFor(websiteId, hostUrl)
+    : externalSnippetFor(websiteId, hostUrl);
 
   export default function AdminWebsites({
     initialWebsites,
@@ -240,6 +254,11 @@ const snippetFor = (websiteId: string, mode: "external" | "inline") =>
     const [newDomains, setNewDomains] = useState("");
     const [error, setError] = useState<string | null>(null);
   const [snippetMode, setSnippetMode] = useState<"external" | "inline">("external");
+  const [hostUrl, setHostUrl] = useState(fallbackHostUrl);
+
+    useEffect(() => {
+      setHostUrl(resolveSnippetHostUrl());
+    }, []);
 
     const sortedWebsites = useMemo(
       () =>
@@ -331,7 +350,7 @@ const snippetFor = (websiteId: string, mode: "external" | "inline") =>
     };
 
   const copySnippet = async (websiteId: string) => {
-    await navigator.clipboard.writeText(snippetFor(websiteId, snippetMode));
+    await navigator.clipboard.writeText(snippetFor(websiteId, snippetMode, hostUrl));
   };
 
     return (
@@ -430,7 +449,7 @@ const snippetFor = (websiteId: string, mode: "external" | "inline") =>
                 }
               />
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-mono text-slate-600">
-                {snippetFor(site.id, snippetMode)}
+                {snippetFor(site.id, snippetMode, hostUrl)}
               </div>
             </div>,
             <span

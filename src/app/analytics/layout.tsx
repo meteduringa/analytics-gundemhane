@@ -29,7 +29,7 @@
       <div className="min-h-screen bg-slate-50 text-slate-900">
         <aside className="hidden h-screen w-64 flex-col border-r border-slate-200 bg-white px-5 py-6 lg:fixed lg:inset-y-0 lg:left-0 lg:flex">
           <Link href="/analytics" className="text-lg font-semibold text-slate-900">
-            Gundemhane Analytics
+            Elmasistatistik Analytics
           </Link>
           <p className="mt-2 text-xs text-slate-500">
             Dashboard-first, hızlı raporlama

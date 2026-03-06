@@ -12,9 +12,37 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = (
+  process.env.NEXT_PUBLIC_HOST_URL ?? "https://giris.elmasistatistik.com.tr"
+).replace(/\/+$/, "");
+const siteTitle = "Elmasistatistik Analytics";
+const siteDescription = "Gercek zamanli analytics dashboard.";
+
 export const metadata: Metadata = {
-  title: "Gundemhane Analytics",
-  description: "Real-time analytics dashboard for Gundemhane.",
+  metadataBase: new URL(siteUrl),
+  title: siteTitle,
+  description: siteDescription,
+  applicationName: siteTitle,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: siteTitle,
+    description: siteDescription,
+    url: siteUrl,
+    siteName: siteTitle,
+    type: "website",
+    locale: "tr_TR",
+  },
+  twitter: {
+    card: "summary",
+    title: siteTitle,
+    description: siteDescription,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

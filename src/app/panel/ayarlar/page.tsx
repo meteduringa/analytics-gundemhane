@@ -5,15 +5,23 @@ import { Clipboard, ClipboardCheck, Globe, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-const hostUrl =
-  process.env.NEXT_PUBLIC_HOST_URL ?? "https://giris.elmasistatistik.com.tr";
+const fallbackHostUrl = (
+  process.env.NEXT_PUBLIC_HOST_URL ?? "https://giris.elmasistatistik.com.tr"
+).replace(/\/+$/, "");
 
-const buildExternalSnippet = (websiteId: string) => `<script async fetchpriority="low" src="${hostUrl}/simple-tracker.js"
+const resolveSnippetHostUrl = () => {
+  if (typeof window !== "undefined" && window.location.origin) {
+    return window.location.origin.replace(/\/+$/, "");
+  }
+  return fallbackHostUrl;
+};
+
+const buildExternalSnippet = (websiteId: string, hostUrl: string) => `<script async fetchpriority="low" src="${hostUrl}/simple-tracker.js"
   data-site-id="${websiteId}"
   data-host-url="${hostUrl}">
 </script>`;
 
-const buildInlineSnippet = (websiteId: string) => `<script data-site-id="${websiteId}" data-host-url="${hostUrl}">
+const buildInlineSnippet = (websiteId: string, hostUrl: string) => `<script data-site-id="${websiteId}" data-host-url="${hostUrl}">
 (function () {
   var s = document.currentScript;
   if (!s) return;
@@ -241,6 +249,11 @@ const SettingsPage = () => {
   const [copied, setCopied] = useState<"external" | "inline" | null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] = useState("");
+  const [hostUrl, setHostUrl] = useState(fallbackHostUrl);
+
+  useEffect(() => {
+    setHostUrl(resolveSnippetHostUrl());
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -326,8 +339,8 @@ const SettingsPage = () => {
         throw new Error(payload.error ?? "Site oluşturulamadı.");
       }
       const websiteId = payload.website.id as string;
-      const external = buildExternalSnippet(websiteId);
-      const inline = buildInlineSnippet(websiteId);
+      const external = buildExternalSnippet(websiteId, hostUrl);
+      const inline = buildInlineSnippet(websiteId, hostUrl);
       setSnippet(external);
       setInlineSnippet(inline);
       setSites((prev) => [payload.website, ...prev]);
@@ -560,7 +573,7 @@ const SettingsPage = () => {
                     <button
                       type="button"
                       onClick={() =>
-                        handleCopy(buildExternalSnippet(site.id), "external")
+                        handleCopy(buildExternalSnippet(site.id, hostUrl), "external")
                       }
                       className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600"
                     >
@@ -570,7 +583,7 @@ const SettingsPage = () => {
                     <button
                       type="button"
                       onClick={() =>
-                        handleCopy(buildInlineSnippet(site.id), "inline")
+                        handleCopy(buildInlineSnippet(site.id, hostUrl), "inline")
                       }
                       className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-600"
                     >
