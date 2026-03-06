@@ -2,11 +2,31 @@
   const script = document.currentScript;
   if (!script) return;
 
+  const FALLBACK_HOST_URL = "https://giris.elmasistatistik.com.tr";
+  const LEGACY_HOSTNAME = "analytics.gundemhane.com";
+  const normalizeHostUrl = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (raw.startsWith("//")) return `https:${raw}`.replace(/\/+$/, "");
+    if (/^https?:\/\//i.test(raw)) return raw.replace(/\/+$/, "");
+    return `https://${raw.replace(/^\/+/, "")}`.replace(/\/+$/, "");
+  };
+  const resolveHostUrl = () => {
+    const normalized = normalizeHostUrl(script.getAttribute("data-host-url") || "");
+    if (!normalized) return FALLBACK_HOST_URL;
+    try {
+      const parsed = new URL(normalized);
+      return parsed.hostname === LEGACY_HOSTNAME ? FALLBACK_HOST_URL : normalized;
+    } catch {
+      return FALLBACK_HOST_URL;
+    }
+  };
+
   const siteId =
     script.getAttribute("data-site-id") ||
     script.getAttribute("data-website-id");
-  const hostUrl = script.getAttribute("data-host-url") || "";
-  if (!siteId || !hostUrl) return;
+  const hostUrl = resolveHostUrl();
+  if (!siteId) return;
 
   const normalizedHost = hostUrl.replace(/\/$/, "");
   const endpoint = `${normalizedHost}/api/collect`;
