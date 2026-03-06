@@ -53,7 +53,7 @@ export async function GET(request: Request) {
   const isFreshTodayRecord =
     Boolean(existing) &&
     isToday &&
-    now.getTime() - existing.updatedAt.getTime() < TODAY_REFRESH_MS;
+    now.getTime() - (existing?.updatedAt.getTime() ?? 0) < TODAY_REFRESH_MS;
   if (isFreshTodayRecord && existing) {
     return NextResponse.json({
       siteId,
