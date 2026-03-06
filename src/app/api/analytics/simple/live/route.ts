@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { prisma } from "@/lib/prisma";
 import { getIstanbulDayRange } from "@/lib/bik-time";
+import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
 
 export const runtime = "nodejs";
+const LIVE_REFRESH_MS = 30_000;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -31,8 +33,9 @@ export async function GET(request: Request) {
     // Ignore cache errors.
   }
 
-  const { start } = getIstanbulDayRange(new Date());
-  const record = await prisma.analyticsDailySimple.findUnique({
+  const now = new Date();
+  const { start } = getIstanbulDayRange(now);
+  let record = await prisma.analyticsDailySimple.findUnique({
     where: {
       siteId_day: {
         siteId,
@@ -41,7 +44,36 @@ export async function GET(request: Request) {
     },
   });
 
-  const now = new Date();
+  const shouldRefresh =
+    !record || now.getTime() - record.updatedAt.getTime() >= LIVE_REFRESH_MS;
+  if (shouldRefresh) {
+    const computed = await computeSimpleDayMetrics(siteId, now);
+    record = await prisma.analyticsDailySimple.upsert({
+      where: {
+        siteId_day: {
+          siteId,
+          day: computed.dayStart,
+        },
+      },
+      create: {
+        siteId,
+        day: computed.dayStart,
+        dailyUniqueUsers: computed.daily_unique_users,
+        dailyDirectUniqueUsers: computed.daily_direct_unique_users,
+        dailyPageviews: computed.daily_pageviews,
+        dailyAvgTimeOnSiteSecondsPerUnique:
+          computed.daily_avg_time_on_site_seconds_per_unique,
+      },
+      update: {
+        dailyUniqueUsers: computed.daily_unique_users,
+        dailyDirectUniqueUsers: computed.daily_direct_unique_users,
+        dailyPageviews: computed.daily_pageviews,
+        dailyAvgTimeOnSiteSecondsPerUnique:
+          computed.daily_avg_time_on_site_seconds_per_unique,
+      },
+    });
+  }
+
   const istanbulFormatter = new Intl.DateTimeFormat("tr-TR", {
     timeZone: "Europe/Istanbul",
     year: "numeric",
