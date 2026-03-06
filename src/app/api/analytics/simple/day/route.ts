@@ -5,7 +5,6 @@ import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
 import { getIstanbulDayRange } from "@/lib/bik-time";
 
 export const runtime = "nodejs";
-const TODAY_REFRESH_MS = 30_000;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -50,11 +49,7 @@ export async function GET(request: Request) {
       daily_popcent_pageviews: Number(popcentSummary.total_events),
     });
   }
-  const isFreshTodayRecord =
-    Boolean(existing) &&
-    isToday &&
-    now.getTime() - (existing?.updatedAt.getTime() ?? 0) < TODAY_REFRESH_MS;
-  if (isFreshTodayRecord && existing) {
+  if (existing && isToday) {
     return NextResponse.json({
       siteId,
       day: dayString,
