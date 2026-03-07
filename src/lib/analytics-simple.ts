@@ -213,11 +213,11 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     ],
   };
 
-  const strictEvents = await prisma.analyticsEvent.findMany({
+  const rawEvents = await prisma.analyticsEvent.findMany({
     where: {
       websiteId: siteId,
       type: "PAGEVIEW",
-      mode: "BIK_STRICT",
+      mode: "RAW",
       countryCode: "TR",
       ...whereTimeRange,
     },
@@ -233,13 +233,13 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     orderBy: { createdAt: "asc" },
   });
 
-  const eventsSource = strictEvents.length
-    ? strictEvents
+  const strictEvents = rawEvents.length
+    ? []
     : await prisma.analyticsEvent.findMany({
         where: {
           websiteId: siteId,
           type: "PAGEVIEW",
-          mode: "RAW",
+          mode: "BIK_STRICT",
           countryCode: "TR",
           ...whereTimeRange,
         },
@@ -255,30 +255,33 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
         orderBy: { createdAt: "asc" },
       });
 
+  const eventsSource = rawEvents.length ? rawEvents : strictEvents;
   const deduped = dedupeEvents(eventsSource.filter(isInDay));
 
-  const pingEventsSource = strictEvents.length
-    ? await prisma.analyticsEvent.findMany({
-        where: {
-          websiteId: siteId,
-          type: "EVENT",
-          mode: "BIK_STRICT",
-          eventName: "ping",
-          countryCode: "TR",
-          ...whereTimeRange,
-        },
-        select: {
-          visitorId: true,
-          createdAt: true,
-          clientTimestamp: true,
-          eventData: true,
-        },
-      })
+  const rawPingEvents = await prisma.analyticsEvent.findMany({
+    where: {
+      websiteId: siteId,
+      type: "EVENT",
+      mode: "RAW",
+      eventName: "ping",
+      countryCode: "TR",
+      ...whereTimeRange,
+    },
+    select: {
+      visitorId: true,
+      createdAt: true,
+      clientTimestamp: true,
+      eventData: true,
+    },
+  });
+
+  const pingEventsSource = rawEvents.length || rawPingEvents.length
+    ? rawPingEvents
     : await prisma.analyticsEvent.findMany({
         where: {
           websiteId: siteId,
           type: "EVENT",
-          mode: "RAW",
+          mode: "BIK_STRICT",
           eventName: "ping",
           countryCode: "TR",
           ...whereTimeRange,
