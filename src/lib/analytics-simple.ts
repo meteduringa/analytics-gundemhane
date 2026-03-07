@@ -5,6 +5,7 @@ const DEDUPE_WINDOW_MS = 1500;
 const SESSION_INACTIVITY_MINUTES = 35;
 const MAX_GAP_FOR_TIME_SECONDS = 1800;
 const LAST_PAGE_ESTIMATE_SECONDS = 30;
+const MIN_VISITOR_SECONDS = 1;
 
 const normalizeUrl = (value: string) => {
   try {
@@ -212,11 +213,12 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     ],
   };
 
-  const rawEvents = await prisma.analyticsEvent.findMany({
+  const strictEvents = await prisma.analyticsEvent.findMany({
     where: {
       websiteId: siteId,
       type: "PAGEVIEW",
-      mode: "RAW",
+      mode: "BIK_STRICT",
+      countryCode: "TR",
       ...whereTimeRange,
     },
     select: {
@@ -231,13 +233,14 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     orderBy: { createdAt: "asc" },
   });
 
-  const strictEvents = rawEvents.length
-    ? []
+  const eventsSource = strictEvents.length
+    ? strictEvents
     : await prisma.analyticsEvent.findMany({
         where: {
           websiteId: siteId,
           type: "PAGEVIEW",
-          mode: "BIK_STRICT",
+          mode: "RAW",
+          countryCode: "TR",
           ...whereTimeRange,
         },
         select: {
@@ -252,33 +255,32 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
         orderBy: { createdAt: "asc" },
       });
 
-  const eventsSource = rawEvents.length ? rawEvents : strictEvents;
   const deduped = dedupeEvents(eventsSource.filter(isInDay));
 
-  const rawPingEvents = await prisma.analyticsEvent.findMany({
-    where: {
-      websiteId: siteId,
-      type: "EVENT",
-      mode: "RAW",
-      eventName: "ping",
-      ...whereTimeRange,
-    },
-    select: {
-      visitorId: true,
-      createdAt: true,
-      clientTimestamp: true,
-      eventData: true,
-    },
-  });
-
-  const pingEventsSource = rawEvents.length || rawPingEvents.length
-    ? rawPingEvents
-    : await prisma.analyticsEvent.findMany({
+  const pingEventsSource = strictEvents.length
+    ? await prisma.analyticsEvent.findMany({
         where: {
           websiteId: siteId,
           type: "EVENT",
           mode: "BIK_STRICT",
           eventName: "ping",
+          countryCode: "TR",
+          ...whereTimeRange,
+        },
+        select: {
+          visitorId: true,
+          createdAt: true,
+          clientTimestamp: true,
+          eventData: true,
+        },
+      })
+    : await prisma.analyticsEvent.findMany({
+        where: {
+          websiteId: siteId,
+          type: "EVENT",
+          mode: "RAW",
+          eventName: "ping",
+          countryCode: "TR",
           ...whereTimeRange,
         },
         select: {
@@ -324,6 +326,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
   const uniqueVisitors = new Set<string>();
   let directUnique = 0;
   let totalVisitorSeconds = 0;
+  let totalVisitorCounted = 0;
 
   for (const [visitorId, events] of visitorEvents.entries()) {
     const sorted = [...events].sort(
@@ -331,13 +334,15 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     );
     const first = sorted[0];
     const visitorPingMap = pingMaxByVisitor.get(visitorId);
-    const observedSecondsFromPing = visitorPingMap
+    const observedSeconds = visitorPingMap
       ? Array.from(visitorPingMap.values()).reduce((sum, value) => sum + value, 0)
       : 0;
+    if (observedSeconds < MIN_VISITOR_SECONDS) {
+      continue;
+    }
     uniqueVisitors.add(visitorId);
-    const eventTimestamps = sorted.map((event) => resolveEventTimestamp(event));
-    const fallbackSeconds = computeVisitorTime(eventTimestamps);
-    totalVisitorSeconds += Math.max(observedSecondsFromPing, fallbackSeconds);
+    totalVisitorSeconds += observedSeconds;
+    totalVisitorCounted += 1;
     if (first) {
       const referrer = first.referrer ?? "";
       const isEmptyReferrer = referrer.trim() === "";
@@ -352,8 +357,8 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
   }
 
   const uniqueCount = uniqueVisitors.size;
-  const avgTimePerUnique = uniqueCount > 0
-    ? Math.round(totalVisitorSeconds / uniqueCount)
+  const avgTimePerUnique = totalVisitorCounted > 0
+    ? Math.round(totalVisitorSeconds / totalVisitorCounted)
     : 0;
 
   return {
