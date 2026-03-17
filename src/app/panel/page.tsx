@@ -72,10 +72,11 @@ const PanelPage = () => {
   const refreshAll = async (
     siteId: string,
     dateValue: string,
-    options?: { silent?: boolean }
+    options?: { silent?: boolean; includeTopPages?: boolean }
   ) => {
     if (!siteId) return;
     const silent = options?.silent === true;
+    const includeTopPages = options?.includeTopPages !== false;
     if (!silent) {
       setIsRefreshing(true);
     }
@@ -109,10 +110,11 @@ const PanelPage = () => {
           : fetch(`/api/analytics/simple/day?${params.toString()}`, {
               signal: controller.signal,
             });
-      const topPagesPromise = fetch(
-        `/api/panel/top-pages?${topPagesParams.toString()}`,
-        { signal: controller.signal }
-      );
+      const topPagesPromise = includeTopPages
+        ? fetch(`/api/panel/top-pages?${topPagesParams.toString()}`, {
+            signal: controller.signal,
+          })
+        : null;
 
       const response = await metricsPromise;
       const payload = await response.json();
@@ -121,10 +123,12 @@ const PanelPage = () => {
         setLastUpdatedAt(new Date());
       }
 
-      const topPagesResponse = await topPagesPromise;
-      const topPagesPayload = await topPagesResponse.json();
-      if (topPagesResponse.ok && seq === refreshSeq.current) {
-        setTopPages(topPagesPayload.pages ?? []);
+      if (topPagesPromise) {
+        const topPagesResponse = await topPagesPromise;
+        const topPagesPayload = await topPagesResponse.json();
+        if (topPagesResponse.ok && seq === refreshSeq.current) {
+          setTopPages(topPagesPayload.pages ?? []);
+        }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -182,9 +186,13 @@ const PanelPage = () => {
   useEffect(() => {
     if (!user) return;
     if (!selectedSiteId) return;
+    if (viewMode !== "live") return;
     const interval = window.setInterval(() => {
-      refreshAll(selectedSiteId, selectedDate, { silent: true });
-    }, 20000);
+      refreshAll(selectedSiteId, selectedDate, {
+        silent: true,
+        includeTopPages: false,
+      });
+    }, 60000);
     return () => window.clearInterval(interval);
   }, [selectedDate, selectedSiteId, user, viewMode]);
 
@@ -254,7 +262,9 @@ const PanelPage = () => {
         dateValue={dateInput}
         onDateChange={setDateInput}
         onFilter={() => setSelectedDate(dateInput)}
-        onRefresh={() => refreshAll(selectedSiteId, selectedDate)}
+        onRefresh={() =>
+          refreshAll(selectedSiteId, selectedDate, { includeTopPages: true })
+        }
         disableDate={viewMode === "live"}
       />
 
@@ -262,7 +272,7 @@ const PanelPage = () => {
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
       )}
       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-        <span>Veriler arka planda 20 saniyede bir güncellenir.</span>
+        <span>Veriler arka planda 1 dakikada bir güncellenir.</span>
         {lastUpdatedAt && (
           <span>
             Son güncelleme:{" "}
@@ -290,7 +300,7 @@ const PanelPage = () => {
         <StatsCard
           title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail={viewMode === "live" ? "Clean cache (20 sn)" : "Seçilen gün"}
+          detail={viewMode === "live" ? "Clean cache (1 dk)" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
@@ -299,7 +309,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (20 sn)"
+              ? "Clean cache (1 dk)"
               : "Referrer boş (direct)"
           }
           accent="text-cyan-700"
@@ -310,7 +320,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_pageviews ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (20 sn)"
+              ? "Clean cache (1 dk)"
               : "Deduped görüntülenme"
           }
           accent="text-indigo-700"
@@ -345,7 +355,8 @@ const PanelPage = () => {
               Haber Performansı
             </h2>
             <p className="text-sm text-slate-500">
-              Seçilen gün için sayfa görüntülenme ve tekil ziyaretçi.
+              Seçilen gün için sayfa görüntülenme ve tekil ziyaretçi. Bu tablo
+              sadece filtre değişiminde veya manuel yenilemede güncellenir.
             </p>
           </div>
         </div>

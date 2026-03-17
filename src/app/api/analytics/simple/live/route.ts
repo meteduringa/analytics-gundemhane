@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getRedis } from "@/lib/redis";
 import { prisma } from "@/lib/prisma";
 import { getIstanbulDayRange } from "@/lib/bik-time";
 
@@ -11,24 +10,6 @@ export async function GET(request: Request) {
 
   if (!siteId) {
     return NextResponse.json({ error: "siteId zorunludur." }, { status: 400 });
-  }
-
-  const cacheKey = `simple:live:clean:${siteId}`;
-
-  try {
-    const redis = await getRedis();
-    if (redis) {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        return NextResponse.json(JSON.parse(cached), {
-          headers: {
-            "Cache-Control": "no-store, no-cache, must-revalidate",
-          },
-        });
-      }
-    }
-  } catch {
-    // Ignore cache errors.
   }
 
   const { start } = getIstanbulDayRange(new Date());
@@ -74,15 +55,6 @@ export async function GET(request: Request) {
     daily_popcent_unique_users: 0,
     daily_popcent_pageviews: 0,
   };
-
-  try {
-    const redis = await getRedis();
-    if (redis) {
-      await redis.set(cacheKey, JSON.stringify(payload), { EX: 20 });
-    }
-  } catch {
-    // Ignore cache errors.
-  }
 
   return NextResponse.json(payload, {
     headers: {

@@ -1,0 +1,17 @@
+[Unit]
+Description=Analytics recompute loop (60s fixed cadence)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/analytics
+ExecStart=/opt/analytics/ops/analytics-recompute-loop.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
