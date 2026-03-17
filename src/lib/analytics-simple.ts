@@ -77,6 +77,7 @@ const normalizeHost = (value: string | null) => {
 };
 
 type SimpleEvent = {
+  id: string;
   visitorId: string;
   url: string;
   referrer: string | null;
@@ -87,6 +88,7 @@ type SimpleEvent = {
 };
 
 type PingEvent = {
+  id: string;
   visitorId: string;
   createdAt: Date;
   clientTimestamp: Date | null;
@@ -206,44 +208,28 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     const ts = resolveEventTimestamp(event).getTime();
     return ts >= start.getTime() && ts <= end.getTime();
   };
-  const whereTimeRange = {
-    OR: [
-      { createdAt: { gte: start, lte: end } },
-      { clientTimestamp: { gte: start, lte: end } },
-    ],
+  const mergeById = <T extends { id: string; createdAt: Date }>(items: T[]) => {
+    const merged = new Map<string, T>();
+    for (const item of items) {
+      merged.set(item.id, item);
+    }
+    return Array.from(merged.values()).sort(
+      (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
+    );
   };
 
-  const rawEvents = await prisma.analyticsEvent.findMany({
-    where: {
-      websiteId: siteId,
-      type: "PAGEVIEW",
-      mode: "RAW",
-      countryCode: "TR",
-      ...whereTimeRange,
-    },
-    select: {
-      visitorId: true,
-      url: true,
-      referrer: true,
-      eventData: true,
-      createdAt: true,
-      clientTimestamp: true,
-      countryCode: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  const strictEvents = rawEvents.length
-    ? []
-    : await prisma.analyticsEvent.findMany({
+  const fetchSimpleEvents = async (mode: "RAW" | "BIK_STRICT") => {
+    const [byCreatedAt, byClientTimestamp] = await Promise.all([
+      prisma.analyticsEvent.findMany({
         where: {
           websiteId: siteId,
           type: "PAGEVIEW",
-          mode: "BIK_STRICT",
+          mode,
           countryCode: "TR",
-          ...whereTimeRange,
+          createdAt: { gte: start, lte: end },
         },
         select: {
+          id: true,
           visitorId: true,
           url: true,
           referrer: true,
@@ -253,46 +239,93 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
           countryCode: true,
         },
         orderBy: { createdAt: "asc" },
-      });
+      }),
+      prisma.analyticsEvent.findMany({
+        where: {
+          websiteId: siteId,
+          type: "PAGEVIEW",
+          mode,
+          countryCode: "TR",
+          clientTimestamp: { gte: start, lte: end },
+          NOT: {
+            createdAt: { gte: start, lte: end },
+          },
+        },
+        select: {
+          id: true,
+          visitorId: true,
+          url: true,
+          referrer: true,
+          eventData: true,
+          createdAt: true,
+          clientTimestamp: true,
+          countryCode: true,
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+    ]);
+
+    return mergeById([...byCreatedAt, ...byClientTimestamp]);
+  };
+
+  const rawEvents = await fetchSimpleEvents("RAW");
+
+  const strictEvents = rawEvents.length
+    ? []
+      : await fetchSimpleEvents("BIK_STRICT");
 
   const eventsSource = rawEvents.length ? rawEvents : strictEvents;
   const deduped = dedupeEvents(eventsSource.filter(isInDay));
 
-  const rawPingEvents = await prisma.analyticsEvent.findMany({
-    where: {
-      websiteId: siteId,
-      type: "EVENT",
-      mode: "RAW",
-      eventName: "ping",
-      countryCode: "TR",
-      ...whereTimeRange,
-    },
-    select: {
-      visitorId: true,
-      createdAt: true,
-      clientTimestamp: true,
-      eventData: true,
-    },
-  });
-
-  const pingEventsSource = rawEvents.length || rawPingEvents.length
-    ? rawPingEvents
-    : await prisma.analyticsEvent.findMany({
+  const fetchPingEvents = async (mode: "RAW" | "BIK_STRICT") => {
+    const [byCreatedAt, byClientTimestamp] = await Promise.all([
+      prisma.analyticsEvent.findMany({
         where: {
           websiteId: siteId,
           type: "EVENT",
-          mode: "BIK_STRICT",
+          mode,
           eventName: "ping",
           countryCode: "TR",
-          ...whereTimeRange,
+          createdAt: { gte: start, lte: end },
         },
         select: {
+          id: true,
           visitorId: true,
           createdAt: true,
           clientTimestamp: true,
           eventData: true,
         },
-      });
+      }),
+      prisma.analyticsEvent.findMany({
+        where: {
+          websiteId: siteId,
+          type: "EVENT",
+          mode,
+          eventName: "ping",
+          countryCode: "TR",
+          clientTimestamp: { gte: start, lte: end },
+          NOT: {
+            createdAt: { gte: start, lte: end },
+          },
+        },
+        select: {
+          id: true,
+          visitorId: true,
+          createdAt: true,
+          clientTimestamp: true,
+          eventData: true,
+        },
+      }),
+    ]);
+
+    return mergeById([...byCreatedAt, ...byClientTimestamp]);
+  };
+
+  const rawPingEvents = await fetchPingEvents("RAW");
+
+  const pingEventsSource = rawEvents.length || rawPingEvents.length
+    ? rawPingEvents
+    : await fetchPingEvents("BIK_STRICT");
 
   const pingEvents = pingEventsSource.filter((event) => {
     const ts = resolveEventTimestamp(event).getTime();

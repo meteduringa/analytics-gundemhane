@@ -29,6 +29,8 @@ jobs:
             cd /opt/analytics
             git fetch origin main
             git reset --hard origin/main
+            chmod +x ops/*.sh || true
+            ./ops/ensure-analytics-indexes.sh || true
             docker build -t analytics-app:latest .
             docker network inspect analytics_default >/dev/null 2>&1 || docker network create analytics_default
             docker rm -f analytics-app-1 >/dev/null 2>&1 || true
