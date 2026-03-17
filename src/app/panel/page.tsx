@@ -180,7 +180,7 @@ const PanelPage = () => {
   }, [user]);
 
   useEffect(() => {
-    refreshAll(selectedSiteId, selectedDate);
+    refreshAll(selectedSiteId, selectedDate, { includeTopPages: false });
   }, [selectedDate, selectedSiteId, viewMode]);
 
   useEffect(() => {
@@ -356,7 +356,7 @@ const PanelPage = () => {
             </h2>
             <p className="text-sm text-slate-500">
               Seçilen gün için sayfa görüntülenme ve tekil ziyaretçi. Bu tablo
-              sadece filtre değişiminde veya manuel yenilemede güncellenir.
+              sadece manuel yenilemede güncellenir.
             </p>
           </div>
         </div>
