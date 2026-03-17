@@ -258,15 +258,17 @@ const PanelPage = () => {
         </div>
       </div>
 
-      <FiltersBar
-        dateValue={dateInput}
-        onDateChange={setDateInput}
-        onFilter={() => setSelectedDate(dateInput)}
-        onRefresh={() =>
-          refreshAll(selectedSiteId, selectedDate, { includeTopPages: true })
-        }
-        disableDate={viewMode === "live"}
-      />
+        <FiltersBar
+          dateValue={dateInput}
+          onDateChange={setDateInput}
+          onFilter={() => setSelectedDate(dateInput)}
+          onRefresh={() =>
+            refreshAll(selectedSiteId, selectedDate, {
+              includeTopPages: viewMode !== "live",
+            })
+          }
+          disableDate={viewMode === "live"}
+        />
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
