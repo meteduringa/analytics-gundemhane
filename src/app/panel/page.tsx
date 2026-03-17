@@ -141,6 +141,38 @@ const PanelPage = () => {
     }
   };
 
+  const recomputeDay = async (siteId: string, dateValue: string) => {
+    if (!siteId || !dateValue) return;
+    try {
+      await fetch("/api/analytics/simple/recompute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          siteId,
+          date: dateValue,
+        }),
+      });
+    } catch {
+      // Ignore recompute failures here; the subsequent fetch will expose stale data.
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    if (!selectedSiteId) return;
+    setIsRefreshing(true);
+    try {
+      await recomputeDay(selectedSiteId, selectedDate);
+      await refreshAll(selectedSiteId, selectedDate, {
+        silent: true,
+        includeTopPages: viewMode !== "live",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const isAuthorized = window.localStorage.getItem("auth") === "1";
@@ -258,17 +290,15 @@ const PanelPage = () => {
         </div>
       </div>
 
-        <FiltersBar
-          dateValue={dateInput}
-          onDateChange={setDateInput}
-          onFilter={() => setSelectedDate(dateInput)}
-          onRefresh={() =>
-            refreshAll(selectedSiteId, selectedDate, {
-              includeTopPages: viewMode !== "live",
-            })
-          }
-          disableDate={viewMode === "live"}
-        />
+      <FiltersBar
+        dateValue={dateInput}
+        onDateChange={setDateInput}
+        onFilter={() => setSelectedDate(dateInput)}
+        onRefresh={() => {
+          void handleManualRefresh();
+        }}
+        disableDate={viewMode === "live"}
+      />
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
