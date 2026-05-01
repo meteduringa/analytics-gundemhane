@@ -12,6 +12,7 @@ const baseMenuItems = [
 
 const customerOnlyItems = [
   { key: "discover", label: "Keşfet Analizi", href: "/panel/kesfet-analiz" },
+  { key: "general", label: "Genel Analiz", href: "/panel/genel-analiz" },
 ];
 
 const adminOnlyItems = [
@@ -56,7 +57,7 @@ const DashboardLayout = ({ children }: LayoutProps) => {
     if (role === "CUSTOMER") {
       const available = [...baseMenuItems, ...customerOnlyItems];
       if (!panelSections || panelSections.length === 0) {
-        return available;
+        return available.filter((item) => item.key !== "general");
       }
       return available.filter((item) => panelSections.includes(item.key));
     }

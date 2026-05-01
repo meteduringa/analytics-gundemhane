@@ -10,6 +10,7 @@ const sectionOptions = [
   { key: "daily", label: "Ziyaretçi (Günlük)" },
   { key: "settings", label: "Ayarlar" },
   { key: "discover", label: "Keşfet Analizi" },
+  { key: "general", label: "Genel Analiz" },
 ];
 
 type Site = {
