@@ -268,6 +268,7 @@ const PanelPage = () => {
     if (!user) return;
     if (!selectedSiteId) return;
     if (viewMode !== "live") return;
+    if (autoRecomputeEnabled) return;
     const interval = window.setInterval(() => {
       refreshAll(selectedSiteId, selectedDate, {
         silent: true,
@@ -275,12 +276,7 @@ const PanelPage = () => {
       });
     }, 60000);
     return () => window.clearInterval(interval);
-  }, [selectedDate, selectedSiteId, user, viewMode]);
-
-  useEffect(() => {
-    if (viewMode === "live") return;
-    setAutoRecomputeEnabled(false);
-  }, [viewMode]);
+  }, [autoRecomputeEnabled, selectedDate, selectedSiteId, user, viewMode]);
 
   useEffect(() => {
     if (!autoRecomputeEnabled) {
@@ -288,13 +284,13 @@ const PanelPage = () => {
       setAutoRecomputeBaseline(null);
       return;
     }
-    if (!selectedSiteId || viewMode !== "live") return;
+    if (!selectedSiteId) return;
     void runAutoRecomputeCycle(true);
     const interval = window.setInterval(() => {
       void runAutoRecomputeCycle(false);
     }, 60000);
     return () => window.clearInterval(interval);
-  }, [autoRecomputeEnabled, selectedDate, selectedSiteId, viewMode]);
+  }, [autoRecomputeEnabled, selectedDate, selectedSiteId]);
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
@@ -379,56 +375,57 @@ const PanelPage = () => {
         disableDate={viewMode === "live"}
       />
 
-      {viewMode === "live" && (
-        <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-slate-900">
-                Otomatik Recompute
+      <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-slate-900">
+              Otomatik Recompute
+            </p>
+            <p className="text-xs text-slate-500">
+              Açıkken dakikada 1 recompute yapar. Kapatınca ek yük durur.
+            </p>
+            <p className="text-xs text-slate-400">
+              Açınca tarih bugüne alınır ve aynı ekranda artış takip edilir.
+            </p>
+            {autoRecomputeEnabled && autoRecomputeDelta && (
+              <p className="text-xs font-medium text-emerald-700">
+                Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
+                {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
               </p>
-              <p className="text-xs text-slate-500">
-                Açıkken her 1 dakikada bir recompute yapar. Kapatınca ek yük durur.
+            )}
+            {autoRecomputeEnabled && autoRecomputeStartedAt && (
+              <p className="text-xs text-slate-400">
+                Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
               </p>
-              {autoRecomputeEnabled && autoRecomputeDelta && (
-                <p className="text-xs font-medium text-emerald-700">
-                  Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
-                  {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
-                </p>
-              )}
-              {autoRecomputeEnabled && autoRecomputeStartedAt && (
-                <p className="text-xs text-slate-400">
-                  Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
-                </p>
-              )}
-            </div>
-
-            <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
-              <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!autoRecomputeEnabled) {
-                    setDateInput(todayValue);
-                    setSelectedDate(todayValue);
-                  }
-                  setAutoRecomputeEnabled((current) => !current);
-                }}
-                className={`relative h-7 w-12 rounded-full transition ${
-                  autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
-                }`}
-                aria-pressed={autoRecomputeEnabled}
-                aria-label="Otomatik recompute"
-              >
-                <span
-                  className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-                    autoRecomputeEnabled ? "left-6" : "left-1"
-                  }`}
-                />
-              </button>
-            </label>
+            )}
           </div>
+
+          <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+            <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (!autoRecomputeEnabled) {
+                  setDateInput(todayValue);
+                  setSelectedDate(todayValue);
+                }
+                setAutoRecomputeEnabled((current) => !current);
+              }}
+              className={`relative h-7 w-12 rounded-full transition ${
+                autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
+              }`}
+              aria-pressed={autoRecomputeEnabled}
+              aria-label="Otomatik recompute"
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                  autoRecomputeEnabled ? "left-6" : "left-1"
+                }`}
+              />
+            </button>
+          </label>
         </div>
-      )}
+      </div>
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
@@ -636,57 +633,57 @@ const PanelPage = () => {
         disableDate={viewMode === "live"}
       />
 
-      {viewMode === "live" && (
-        <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-slate-900">
-                Otomatik Recompute
+      <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-slate-900">
+              Otomatik Recompute
+            </p>
+            <p className="text-xs text-slate-500">
+              Açıkken dakikada 1 recompute yapar. Kapatınca ek yük durur.
+            </p>
+            <p className="text-xs text-slate-400">
+              Açınca tarih bugüne alınır ve aynı ekranda artış takip edilir.
+            </p>
+            {autoRecomputeEnabled && autoRecomputeDelta && (
+              <p className="text-xs font-medium text-emerald-700">
+                Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
+                {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
               </p>
-              <p className="text-xs text-slate-500">
-                Açıkken her 1 dakikada bir recompute yapar. Kapatınca ek yük durur.
+            )}
+            {autoRecomputeEnabled && autoRecomputeStartedAt && (
+              <p className="text-xs text-slate-400">
+                Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
               </p>
-              {autoRecomputeEnabled && autoRecomputeDelta && (
-                <p className="text-xs font-medium text-emerald-700">
-                  Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
-                  {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
-                </p>
-              )}
-              {autoRecomputeEnabled && autoRecomputeStartedAt && (
-                <p className="text-xs text-slate-400">
-                  Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
-                </p>
-              )}
-            </div>
-
-            <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
-              <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!autoRecomputeEnabled) {
-                    setDateInput(todayValue);
-                    setSelectedDate(todayValue);
-                    setViewMode("live");
-                  }
-                  setAutoRecomputeEnabled((current) => !current);
-                }}
-                className={`relative h-7 w-12 rounded-full transition ${
-                  autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
-                }`}
-                aria-pressed={autoRecomputeEnabled}
-                aria-label="Otomatik recompute"
-              >
-                <span
-                  className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-                    autoRecomputeEnabled ? "left-6" : "left-1"
-                  }`}
-                />
-              </button>
-            </label>
+            )}
           </div>
+
+          <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+            <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (!autoRecomputeEnabled) {
+                  setDateInput(todayValue);
+                  setSelectedDate(todayValue);
+                }
+                setAutoRecomputeEnabled((current) => !current);
+              }}
+              className={`relative h-7 w-12 rounded-full transition ${
+                autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
+              }`}
+              aria-pressed={autoRecomputeEnabled}
+              aria-label="Otomatik recompute"
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                  autoRecomputeEnabled ? "left-6" : "left-1"
+                }`}
+              />
+            </button>
+          </label>
         </div>
-      )}
+      </div>
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
