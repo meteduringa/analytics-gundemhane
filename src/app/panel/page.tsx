@@ -7,6 +7,19 @@ import { formatDuration } from "@/lib/formatDuration";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+type MetricsSnapshot = {
+  daily_unique_users: number;
+  daily_direct_unique_users: number;
+  daily_pageviews: number;
+  daily_avg_time_on_site_seconds_per_unique: number;
+  daily_popcent_unique_users?: number;
+  daily_popcent_pageviews?: number;
+  as_of_local?: string;
+  as_of_utc?: string;
+  record_updated_at?: string | null;
+  day_start_local?: string;
+};
+
 const formatDateInput = (date: Date) => {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -49,32 +62,46 @@ const PanelPage = () => {
     { id: string; name: string; allowedDomains: string[] }[]
   >([]);
   const [selectedSiteId, setSelectedSiteId] = useState<string>("");
-  const [metrics, setMetrics] = useState<{
-    daily_unique_users: number;
-    daily_direct_unique_users: number;
-    daily_pageviews: number;
-    daily_avg_time_on_site_seconds_per_unique: number;
-    daily_popcent_unique_users?: number;
-    daily_popcent_pageviews?: number;
-    as_of_local?: string;
-    as_of_utc?: string;
-    record_updated_at?: string | null;
-    day_start_local?: string;
-  } | null>(null);
+  const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [topPages, setTopPages] = useState<
     { url: string; pageviews: number; uniqueVisitors: number }[]
   >([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [autoRecomputeEnabled, setAutoRecomputeEnabled] = useState(false);
+  const [autoRecomputeStartedAt, setAutoRecomputeStartedAt] =
+    useState<Date | null>(null);
+  const [autoRecomputeBaseline, setAutoRecomputeBaseline] =
+    useState<MetricsSnapshot | null>(null);
   const refreshSeq = useRef(0);
   const activeController = useRef<AbortController | null>(null);
+  const autoRecomputeInFlight = useRef(false);
+
+  const todayValue = formatDateInput(new Date());
+
+  const captureMetricsSnapshot = (payload: MetricsSnapshot | null) => {
+    if (!payload) return null;
+    return {
+      daily_unique_users: payload.daily_unique_users,
+      daily_direct_unique_users: payload.daily_direct_unique_users,
+      daily_pageviews: payload.daily_pageviews,
+      daily_avg_time_on_site_seconds_per_unique:
+        payload.daily_avg_time_on_site_seconds_per_unique,
+      daily_popcent_unique_users: payload.daily_popcent_unique_users,
+      daily_popcent_pageviews: payload.daily_popcent_pageviews,
+      as_of_local: payload.as_of_local,
+      as_of_utc: payload.as_of_utc,
+      record_updated_at: payload.record_updated_at,
+      day_start_local: payload.day_start_local,
+    };
+  };
 
   const refreshAll = async (
     siteId: string,
     dateValue: string,
     options?: { silent?: boolean; includeTopPages?: boolean }
-  ) => {
-    if (!siteId) return;
+  ): Promise<MetricsSnapshot | null> => {
+    if (!siteId) return null;
     const silent = options?.silent === true;
     const includeTopPages = options?.includeTopPages !== false;
     if (!silent) {
@@ -102,6 +129,7 @@ const PanelPage = () => {
     });
 
     try {
+      let nextMetrics: MetricsSnapshot | null = null;
       const metricsPromise =
         viewMode === "live"
           ? fetch(`/api/analytics/simple/live?${liveParams.toString()}`, {
@@ -121,6 +149,7 @@ const PanelPage = () => {
       if (response.ok && seq === refreshSeq.current) {
         setMetrics(payload);
         setLastUpdatedAt(new Date());
+        nextMetrics = payload;
       }
 
       if (topPagesPromise) {
@@ -130,10 +159,12 @@ const PanelPage = () => {
           setTopPages(topPagesPayload.pages ?? []);
         }
       }
+      return nextMetrics;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
-        return;
+        return null;
       }
+      return null;
     } finally {
       if (!silent) {
         setIsRefreshing(false);
@@ -170,6 +201,24 @@ const PanelPage = () => {
       });
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const runAutoRecomputeCycle = async (resetBaseline: boolean) => {
+    if (!selectedSiteId || autoRecomputeInFlight.current) return;
+    autoRecomputeInFlight.current = true;
+    try {
+      await recomputeDay(selectedSiteId, selectedDate);
+      const payload = await refreshAll(selectedSiteId, selectedDate, {
+        silent: true,
+        includeTopPages: false,
+      });
+      if (payload && resetBaseline) {
+        setAutoRecomputeBaseline(captureMetricsSnapshot(payload));
+        setAutoRecomputeStartedAt(new Date());
+      }
+    } finally {
+      autoRecomputeInFlight.current = false;
     }
   };
 
@@ -228,10 +277,40 @@ const PanelPage = () => {
     return () => window.clearInterval(interval);
   }, [selectedDate, selectedSiteId, user, viewMode]);
 
+  useEffect(() => {
+    if (viewMode === "live") return;
+    setAutoRecomputeEnabled(false);
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (!autoRecomputeEnabled) {
+      setAutoRecomputeStartedAt(null);
+      setAutoRecomputeBaseline(null);
+      return;
+    }
+    if (!selectedSiteId || viewMode !== "live") return;
+    void runAutoRecomputeCycle(true);
+    const interval = window.setInterval(() => {
+      void runAutoRecomputeCycle(false);
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [autoRecomputeEnabled, selectedDate, selectedSiteId, viewMode]);
+
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
     [selectedSiteId, sites]
   );
+
+  const autoRecomputeDelta = useMemo(() => {
+    if (!metrics || !autoRecomputeBaseline) return null;
+    return {
+      unique: metrics.daily_unique_users - autoRecomputeBaseline.daily_unique_users,
+      direct:
+        metrics.daily_direct_unique_users -
+        autoRecomputeBaseline.daily_direct_unique_users,
+      pageviews: metrics.daily_pageviews - autoRecomputeBaseline.daily_pageviews,
+    };
+  }, [autoRecomputeBaseline, metrics]);
 
   if (!ready) {
     return null;
@@ -299,6 +378,57 @@ const PanelPage = () => {
         }}
         disableDate={viewMode === "live"}
       />
+
+      {viewMode === "live" && (
+        <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-slate-900">
+                Otomatik Recompute
+              </p>
+              <p className="text-xs text-slate-500">
+                Açıkken her 1 dakikada bir recompute yapar. Kapatınca ek yük durur.
+              </p>
+              {autoRecomputeEnabled && autoRecomputeDelta && (
+                <p className="text-xs font-medium text-emerald-700">
+                  Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
+                  {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
+                </p>
+              )}
+              {autoRecomputeEnabled && autoRecomputeStartedAt && (
+                <p className="text-xs text-slate-400">
+                  Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
+                </p>
+              )}
+            </div>
+
+            <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+              <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!autoRecomputeEnabled) {
+                    setDateInput(todayValue);
+                    setSelectedDate(todayValue);
+                  }
+                  setAutoRecomputeEnabled((current) => !current);
+                }}
+                className={`relative h-7 w-12 rounded-full transition ${
+                  autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+                aria-pressed={autoRecomputeEnabled}
+                aria-label="Otomatik recompute"
+              >
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                    autoRecomputeEnabled ? "left-6" : "left-1"
+                  }`}
+                />
+              </button>
+            </label>
+          </div>
+        </div>
+      )}
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
@@ -447,7 +577,7 @@ const PanelPage = () => {
       </header>
 
       <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="text-xs font-semibold text-slate-500">
             Site Seçimi
             <select
@@ -463,6 +593,36 @@ const PanelPage = () => {
               ))}
             </select>
           </label>
+
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-500">
+            <button
+              type="button"
+              onClick={() => setViewMode("daily")}
+              className={`rounded-2xl px-4 py-2 transition ${
+                viewMode === "daily"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Günlük
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const today = formatDateInput(new Date());
+                setDateInput(today);
+                setSelectedDate(today);
+                setViewMode("live");
+              }}
+              className={`rounded-2xl px-4 py-2 transition ${
+                viewMode === "live"
+                  ? "bg-emerald-600 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Anlık Veri
+            </button>
+          </div>
         </div>
       </div>
 
@@ -470,41 +630,125 @@ const PanelPage = () => {
         dateValue={dateInput}
         onDateChange={setDateInput}
         onFilter={() => setSelectedDate(dateInput)}
-        onRefresh={() => refreshAll(selectedSiteId, selectedDate)}
+        onRefresh={() => {
+          void handleManualRefresh();
+        }}
+        disableDate={viewMode === "live"}
       />
+
+      {viewMode === "live" && (
+        <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-slate-900">
+                Otomatik Recompute
+              </p>
+              <p className="text-xs text-slate-500">
+                Açıkken her 1 dakikada bir recompute yapar. Kapatınca ek yük durur.
+              </p>
+              {autoRecomputeEnabled && autoRecomputeDelta && (
+                <p className="text-xs font-medium text-emerald-700">
+                  Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
+                  {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
+                </p>
+              )}
+              {autoRecomputeEnabled && autoRecomputeStartedAt && (
+                <p className="text-xs text-slate-400">
+                  Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
+                </p>
+              )}
+            </div>
+
+            <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+              <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!autoRecomputeEnabled) {
+                    setDateInput(todayValue);
+                    setSelectedDate(todayValue);
+                    setViewMode("live");
+                  }
+                  setAutoRecomputeEnabled((current) => !current);
+                }}
+                className={`relative h-7 w-12 rounded-full transition ${
+                  autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+                aria-pressed={autoRecomputeEnabled}
+                aria-label="Otomatik recompute"
+              >
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                    autoRecomputeEnabled ? "left-6" : "left-1"
+                  }`}
+                />
+              </button>
+            </label>
+          </div>
+        </div>
+      )}
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
       )}
 
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+        {lastUpdatedAt && (
+          <span>
+            Son güncelleme: {formatIstanbulDateTime(lastUpdatedAt)}
+          </span>
+        )}
+        {metrics?.record_updated_at && (
+          <span>
+            Cache zamanı: {formatIstanbulDateTime(metrics.record_updated_at)}
+          </span>
+        )}
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatsCard
-          title="Günlük Tekil"
+          title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail="Seçilen gün"
+          detail={viewMode === "live" ? "Clean cache (1 dk)" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
         <StatsCard
-          title="Günlük Direct"
+          title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Direct`}
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
-          detail="Referrer boş (direct)"
+          detail={
+            viewMode === "live"
+              ? "Clean cache (1 dk)"
+              : "Referrer boş (direct)"
+          }
           accent="text-cyan-700"
           tone="bg-cyan-50"
         />
         <StatsCard
-          title="Günlük Pageview"
+          title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Pageview`}
           value={`${metrics?.daily_pageviews ?? 0}`}
-          detail="Deduped görüntülenme"
+          detail={
+            viewMode === "live"
+              ? "Clean cache (1 dk)"
+              : "Deduped görüntülenme"
+          }
           accent="text-indigo-700"
           tone="bg-indigo-50"
         />
         <StatsCard
           title="Günlük Ortalama Süre"
-          value={formatDuration(
-            metrics?.daily_avg_time_on_site_seconds_per_unique ?? 0
-          )}
-          detail="Tekil başına ortalama"
+          value={
+            viewMode === "live"
+              ? "-"
+              : formatDuration(
+                  metrics?.daily_avg_time_on_site_seconds_per_unique ?? 0
+                )
+          }
+          detail={
+            viewMode === "live"
+              ? "Anlık modda süre hesaplanmaz"
+              : "Tekil başına ortalama"
+          }
           accent="text-rose-600"
           tone="bg-rose-50"
         />
