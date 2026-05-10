@@ -7,10 +7,30 @@ const roleGate: Record<string, string[]> = {
   "/api/analytics": ["ADMIN", "CUSTOMER"],
 };
 
+const noStorePrefixes = ["/login", "/panel", "/api/panel"];
+
+const applyNoStoreHeaders = (response: NextResponse) => {
+  response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
+  response.headers.set("Surrogate-Control", "no-store");
+  return response;
+};
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const shouldDisableCache = noStorePrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+
   if (pathname.startsWith("/api/analytics/simple")) {
-    return NextResponse.next();
+    return shouldDisableCache
+      ? applyNoStoreHeaders(NextResponse.next())
+      : NextResponse.next();
   }
   const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
 
@@ -19,23 +39,31 @@ export async function middleware(request: NextRequest) {
   );
 
   if (!matchedPrefix) {
-    return NextResponse.next();
+    return shouldDisableCache
+      ? applyNoStoreHeaders(NextResponse.next())
+      : NextResponse.next();
   }
 
   if (!token) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    return applyNoStoreHeaders(
+      NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+    );
   }
 
   const allowedRoles = roleGate[matchedPrefix];
   const role = (token.role as string | undefined) ?? "CUSTOMER";
 
   if (!allowedRoles.includes(role)) {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    return applyNoStoreHeaders(
+      NextResponse.json({ error: "Forbidden." }, { status: 403 })
+    );
   }
 
-  return NextResponse.next();
+  return shouldDisableCache
+    ? applyNoStoreHeaders(NextResponse.next())
+    : NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/api/analytics/:path*"],
+  matcher: ["/login", "/panel/:path*", "/api/panel/:path*", "/api/analytics/:path*"],
 };
