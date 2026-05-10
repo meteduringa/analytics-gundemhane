@@ -4,8 +4,9 @@ set -euo pipefail
 INTERVAL_SECONDS="${ANALYTICS_ALERT_INTERVAL_SECONDS:-60}"
 APP_CONTAINER="${ANALYTICS_APP_CONTAINER:-analytics-app-1}"
 APP_URL="${ANALYTICS_ALERT_APP_URL:-http://127.0.0.1:3000/api/panel/alert-runner}"
+LOCK_FILE="${ANALYTICS_ALERT_LOCK_FILE:-/run/analytics-alert.lock}"
 
-exec 9>/run/analytics-alert.lock
+exec 9>"${LOCK_FILE}"
 flock -n 9 || exit 0
 
 resolve_container() {
