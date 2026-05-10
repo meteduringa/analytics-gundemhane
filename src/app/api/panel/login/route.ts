@@ -18,9 +18,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const user =
-    (await prisma.user.findUnique({ where: { email: username } })) ??
-    (await prisma.user.findFirst({ where: { name: username } }));
+  const user = await prisma.user.findUnique({ where: { email: username } });
 
   if (!user || !user.passwordHash) {
     return NextResponse.json(

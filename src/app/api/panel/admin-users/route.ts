@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   }
 
   const payload = await request.json();
-  const email = String(payload.email ?? "").trim().toLowerCase();
+  const email = String(payload.email ?? "").trim();
   const telegramChatId = payload.telegramChatId
     ? String(payload.telegramChatId).trim()
     : null;
@@ -77,15 +77,24 @@ export async function POST(request: Request) {
   const panelSections = parseSections(payload.panelSections);
   if (!email || !password) {
     return NextResponse.json(
-      { error: "Email ve şifre zorunludur." },
+      { error: "Kullanıcı adı ve şifre zorunludur." },
       { status: 400 }
     );
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  if (role !== "ADMIN" && websiteIds.length > 1) {
+    return NextResponse.json(
+      { error: "Müşteri kullanıcıları en fazla 1 firmaya atanabilir." },
+      { status: 400 }
+    );
+  }
+
+  const existing = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
+  });
   if (existing) {
     return NextResponse.json(
-      { error: "Bu email zaten kayıtlı." },
+      { error: "Bu kullanıcı adı zaten kayıtlı." },
       { status: 400 }
     );
   }
@@ -137,6 +146,18 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "userId gerekli." }, { status: 400 });
   }
 
+  const existingUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!existingUser) {
+    return NextResponse.json(
+      { error: "Kullanıcı bulunamadı." },
+      { status: 404 }
+    );
+  }
+
   const updates: {
     name?: string | null;
     email?: string;
@@ -150,7 +171,7 @@ export async function PATCH(request: Request) {
     updates.name = payload.name ? String(payload.name).trim() : null;
   }
   if (payload.email !== undefined) {
-    updates.email = String(payload.email).trim().toLowerCase();
+    updates.email = String(payload.email).trim();
   }
   if (payload.telegramChatId !== undefined) {
     updates.telegramChatId = payload.telegramChatId
@@ -171,6 +192,32 @@ export async function PATCH(request: Request) {
     payload.websiteIds !== undefined || payload.websiteId !== undefined
       ? parseWebsiteIds(payload.websiteIds ?? payload.websiteId)
       : null;
+
+  const nextRole = updates.role ?? existingUser.role;
+
+  if (nextRole !== "ADMIN" && websiteIds !== null && websiteIds.length > 1) {
+    return NextResponse.json(
+      { error: "Müşteri kullanıcıları en fazla 1 firmaya atanabilir." },
+      { status: 400 }
+    );
+  }
+
+  if (updates.email) {
+    const conflictingUser = await prisma.user.findFirst({
+      where: {
+        email: { equals: updates.email, mode: "insensitive" },
+        NOT: { id: userId },
+      },
+      select: { id: true },
+    });
+
+    if (conflictingUser) {
+      return NextResponse.json(
+        { error: "Bu kullanıcı adı zaten kayıtlı." },
+        { status: 400 }
+      );
+    }
+  }
 
   const user = await prisma.user.update({
     where: { id: userId },

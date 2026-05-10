@@ -207,6 +207,10 @@ export default function AdminUsersPage() {
 
         <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
           <h2 className="text-lg font-semibold text-slate-900">Yeni Kullanıcı</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Buradaki kullanıcı adı ve şifreyi, müşterinin Elmas tarafında
+            kullandığı giriş bilgileriyle aynı tanımlayabilirsin.
+          </p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label className="text-xs font-semibold text-slate-500">
               Ad
@@ -219,13 +223,14 @@ export default function AdminUsersPage() {
               />
             </label>
             <label className="text-xs font-semibold text-slate-500">
-              Email
+              Kullanıcı Adı
               <input
                 value={newUser.email}
                 onChange={(event) =>
                   setNewUser((prev) => ({ ...prev, email: event.target.value }))
                 }
                 className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm"
+                placeholder="ornek_kullanici"
               />
             </label>
             <label className="text-xs font-semibold text-slate-500">
@@ -260,6 +265,10 @@ export default function AdminUsersPage() {
                   setNewUser((prev) => ({
                     ...prev,
                     role: event.target.value as "ADMIN" | "CUSTOMER",
+                    websiteIds:
+                      event.target.value === "ADMIN"
+                        ? prev.websiteIds
+                        : prev.websiteIds.slice(0, 1),
                   }))
                 }
                 className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm"
@@ -271,7 +280,11 @@ export default function AdminUsersPage() {
           </div>
 
           <div className="mt-4">
-            <p className="text-xs font-semibold text-slate-500">Siteler</p>
+            <p className="text-xs font-semibold text-slate-500">Firmalar</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Müşteri rolünde sadece 1 firma seçilir. Admin birden fazla firma
+              görebilir.
+            </p>
             <div className="mt-2 flex flex-wrap gap-3">
               {siteOptions.map((site) => (
                 <label
@@ -283,6 +296,13 @@ export default function AdminUsersPage() {
                     checked={newUser.websiteIds.includes(site.id)}
                     onChange={(event) => {
                       setNewUser((prev) => {
+                        if (prev.role !== "ADMIN") {
+                          return {
+                            ...prev,
+                            websiteIds: event.target.checked ? [site.id] : [],
+                          };
+                        }
+
                         const next = new Set(prev.websiteIds);
                         if (event.target.checked) {
                           next.add(site.id);
@@ -350,10 +370,10 @@ export default function AdminUsersPage() {
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
-                  <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">Kullanıcı Adı</th>
                   <th className="px-3 py-2">Telegram</th>
                   <th className="px-3 py-2">Rol</th>
-                  <th className="px-3 py-2">Siteler</th>
+                  <th className="px-3 py-2">Firmalar</th>
                   <th className="px-3 py-2">Sekmeler</th>
                   <th className="px-3 py-2">Şifre</th>
                   <th className="px-3 py-2">İşlemler</th>
@@ -447,6 +467,10 @@ const UserRowItem = ({
                 checked={websiteIds.includes(site.id)}
                 onChange={(event) => {
                   setWebsiteIds((prev) => {
+                    if (user.role !== "ADMIN") {
+                      return event.target.checked ? [site.id] : [];
+                    }
+
                     const next = new Set(prev);
                     if (event.target.checked) {
                       next.add(site.id);

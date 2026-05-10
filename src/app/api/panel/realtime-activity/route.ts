@@ -2,12 +2,19 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getBikConfig } from "@/lib/bik-config";
+import { readPanelSession } from "@/lib/panel-session";
+import { canAccessPanelWebsite } from "@/lib/panel-website-access";
 
 export const runtime = "nodejs";
 
 type BucketRow = { minute: Date; visitors: bigint };
 
 export async function GET(request: Request) {
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const websiteId = searchParams.get("websiteId");
 
@@ -16,6 +23,10 @@ export async function GET(request: Request) {
       { error: "websiteId zorunludur." },
       { status: 400 }
     );
+  }
+
+  if (!(await canAccessPanelWebsite(session, websiteId))) {
+    return NextResponse.json({ error: "Bu firmaya erişim yetkiniz yok." }, { status: 403 });
   }
 
   const now = new Date();

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { readPanelSession } from "@/lib/panel-session";
+import { canAccessPanelWebsite } from "@/lib/panel-website-access";
 
 const POPCENT_REFERRER_HOSTS = [
   "ppcnt.org",
@@ -80,6 +82,11 @@ type SummaryRow = {
 };
 
 export async function GET(request: Request) {
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const websiteId = searchParams.get("websiteId");
   const startValue = searchParams.get("start");
@@ -92,6 +99,10 @@ export async function GET(request: Request) {
       { error: "websiteId zorunludur." },
       { status: 400 }
     );
+  }
+
+  if (!(await canAccessPanelWebsite(session, websiteId))) {
+    return NextResponse.json({ error: "Bu firmaya erişim yetkiniz yok." }, { status: 403 });
   }
 
   const startDate = parseFilterDate(startValue);

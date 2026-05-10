@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { readPanelSession } from "@/lib/panel-session";
+import { getPanelAuthorizedWebsiteIds } from "@/lib/panel-website-access";
 
 const normalizeDateInput = (value: string) => {
   const trimmed = value.trim();
@@ -60,6 +62,11 @@ type SummaryRow = {
 };
 
 export async function GET(request: Request) {
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const websiteId = searchParams.get("websiteId");
   const startValue = searchParams.get("start") ?? "";
@@ -86,6 +93,15 @@ export async function GET(request: Request) {
   const limit = Number.isFinite(limitRaw)
     ? Math.min(Math.max(limitRaw, 100), 10000)
     : 2000;
+  const authorizedWebsiteIds = await getPanelAuthorizedWebsiteIds(session);
+
+  if (authorizedWebsiteIds && websiteId && !authorizedWebsiteIds.includes(websiteId)) {
+    return NextResponse.json({ error: "Bu firmaya erişim yetkiniz yok." }, { status: 403 });
+  }
+
+  if (authorizedWebsiteIds && authorizedWebsiteIds.length === 0) {
+    return NextResponse.json({ summary: null, rows: [] });
+  }
 
   const createdAtLocal = Prisma.sql`(e."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul')`;
   const startTs = normalizedStart ? `${normalizedStart} 00:00:00` : null;
@@ -145,6 +161,10 @@ export async function GET(request: Request) {
 
   if (websiteId) {
     conditions.push(Prisma.sql`e."websiteId" = ${websiteId}`);
+  } else if (authorizedWebsiteIds) {
+    conditions.push(
+      Prisma.sql`e."websiteId" IN (${Prisma.join(authorizedWebsiteIds)})`
+    );
   }
 
   if (startTs) {
