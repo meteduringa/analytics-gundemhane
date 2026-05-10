@@ -49,6 +49,24 @@ const buildGoalTracking18hPreset = (): PresetRuleInput[] => [
     cooldownSeconds: 600,
   },
   {
+    name: "Preset • 23 Sonrası Direct Alt Hedef",
+    type: "CURRENT_TARGET_BELOW",
+    config: { metric: "direct", shortfallPercent: 0, startsAtHour: 23 },
+    cooldownSeconds: 3600,
+  },
+  {
+    name: "Preset • 23 Sonrası Tekil Alt Hedef",
+    type: "CURRENT_TARGET_BELOW",
+    config: { metric: "unique", shortfallPercent: 0, startsAtHour: 23 },
+    cooldownSeconds: 3600,
+  },
+  {
+    name: "Preset • 23 Sonrası PV Alt Hedef",
+    type: "CURRENT_TARGET_BELOW",
+    config: { metric: "pageview", shortfallPercent: 0, startsAtHour: 23 },
+    cooldownSeconds: 3600,
+  },
+  {
     name: "Preset • Duraklama 10dk",
     type: "STAGNATION",
     config: { lookbackMinutes: 10, minUniqueDelta: 40, minPageviewDelta: 150 },
@@ -67,7 +85,7 @@ export const ALERT_PRESET_OPTIONS: { key: AlertPresetKey; label: string; descrip
     key: "GOAL_TRACKING_18H",
     label: "Standart Hedef Takibi (18:00 kritik)",
     description:
-      "Direct 1000 / Tekil 10000 / PV 30000 mantığına uygun tempo, 18:00 sonrası kritik, duraklama ve cache alarmları.",
+      "Direct 1000 / Tekil 10000 / PV 30000 mantığına uygun tempo, 18:00 projeksiyon kritik, 23:00 gerçekleşen hedef altı, duraklama ve cache alarmları.",
   },
 ];
 

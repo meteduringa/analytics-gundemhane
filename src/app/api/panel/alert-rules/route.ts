@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 const ALERT_TYPES = new Set<PanelAlertType>([
   "TARGET_PACE_BELOW",
   "PROJECTED_MISS",
+  "CURRENT_TARGET_BELOW",
   "STAGNATION",
   "CACHE_STALE",
   "TRAFFIC_DROP",

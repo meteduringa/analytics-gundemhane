@@ -21,6 +21,7 @@ type PresetOption = {
 type AlertType =
   | "TARGET_PACE_BELOW"
   | "PROJECTED_MISS"
+  | "CURRENT_TARGET_BELOW"
   | "STAGNATION"
   | "CACHE_STALE"
   | "TRAFFIC_DROP";
@@ -80,6 +81,7 @@ const formatIstanbulDateTime = (value: string | null | undefined) => {
 const alertTypeOptions: { value: AlertType; label: string }[] = [
   { value: "TARGET_PACE_BELOW", label: "Hedef temposu geride" },
   { value: "PROJECTED_MISS", label: "00:00 tahmini hedef altında" },
+  { value: "CURRENT_TARGET_BELOW", label: "Belirli saatte hedef altında" },
   { value: "STAGNATION", label: "Duraklama alarmı" },
   { value: "CACHE_STALE", label: "Cache eski alarmı" },
   { value: "TRAFFIC_DROP", label: "Ani düşüş alarmı" },
@@ -91,6 +93,8 @@ const defaultConfigForType = (type: AlertType) => {
       return { metric: "unique", lagPercent: 15, startsAtHour: 12 };
     case "PROJECTED_MISS":
       return { metric: "unique", shortfallPercent: 0, startsAtHour: 14 };
+    case "CURRENT_TARGET_BELOW":
+      return { metric: "unique", shortfallPercent: 0, startsAtHour: 23 };
     case "STAGNATION":
       return { lookbackMinutes: 10, minUniqueDelta: 50, minPageviewDelta: 200 };
     case "CACHE_STALE":
@@ -111,6 +115,10 @@ const configSummary = (rule: AlertRule) => {
       return `${String(config.metric ?? "unique")} • ${String(
         config.startsAtHour ?? 14
       )}:00 sonrası`;
+    case "CURRENT_TARGET_BELOW":
+      return `${String(config.metric ?? "unique")} • ${String(
+        config.startsAtHour ?? 23
+      )}:00 sonrası mevcut hedef kontrolü`;
     case "STAGNATION":
       return `Son ${String(config.lookbackMinutes ?? 10)} dk • min ${
         String(config.minUniqueDelta ?? 0)
@@ -554,6 +562,7 @@ export default function AlarmCenterPage() {
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {(form.type === "TARGET_PACE_BELOW" ||
               form.type === "PROJECTED_MISS" ||
+              form.type === "CURRENT_TARGET_BELOW" ||
               form.type === "TRAFFIC_DROP") && (
               <label className="text-xs font-semibold text-slate-500">
                 Metrik
@@ -610,6 +619,31 @@ export default function AlarmCenterPage() {
                   <input
                     type="number"
                     value={String(form.config.startsAtHour ?? 14)}
+                    onChange={(event) => updateConfig("startsAtHour", event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+                  />
+                </label>
+              </>
+            )}
+
+            {form.type === "CURRENT_TARGET_BELOW" && (
+              <>
+                <label className="text-xs font-semibold text-slate-500">
+                  Tolerans %
+                  <input
+                    type="number"
+                    value={String(form.config.shortfallPercent ?? 0)}
+                    onChange={(event) =>
+                      updateConfig("shortfallPercent", event.target.value)
+                    }
+                    className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-500">
+                  Başlangıç Saati
+                  <input
+                    type="number"
+                    value={String(form.config.startsAtHour ?? 23)}
                     onChange={(event) => updateConfig("startsAtHour", event.target.value)}
                     className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
                   />

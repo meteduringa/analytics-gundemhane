@@ -16,6 +16,12 @@ export type ProjectedMissConfig = {
   startsAtHour?: number;
 };
 
+export type CurrentTargetBelowConfig = {
+  metric: AlertMetric;
+  shortfallPercent?: number;
+  startsAtHour?: number;
+};
+
 export type StagnationConfig = {
   lookbackMinutes: number;
   minUniqueDelta?: number;
@@ -35,6 +41,7 @@ export type TrafficDropConfig = {
 export type PanelAlertConfig =
   | TargetPaceBelowConfig
   | ProjectedMissConfig
+  | CurrentTargetBelowConfig
   | StagnationConfig
   | CacheStaleConfig
   | TrafficDropConfig;
@@ -102,6 +109,14 @@ const normalizeConfig = (
         startsAtHour: record.startsAtHour ? Number(record.startsAtHour) : undefined,
       };
     case "PROJECTED_MISS":
+      return {
+        metric: normalizeMetric(record.metric),
+        shortfallPercent: Number(record.shortfallPercent ?? 0),
+        startsAtHour: record.startsAtHour
+          ? Number(record.startsAtHour)
+          : undefined,
+      };
+    case "CURRENT_TARGET_BELOW":
       return {
         metric: normalizeMetric(record.metric),
         shortfallPercent: Number(record.shortfallPercent ?? 0),
@@ -428,6 +443,48 @@ export const evaluatePanelAlertRule = async (
           metric: typed.metric,
           projected: metric.projected,
           target: metric.target,
+          shortfallPercent: typed.shortfallPercent ?? 0,
+        },
+      };
+    }
+    case "CURRENT_TARGET_BELOW": {
+      const typed = config as CurrentTargetBelowConfig;
+      if (typed.startsAtHour !== undefined && istanbulHour < typed.startsAtHour) {
+        return {
+          triggered: false,
+          title: "Henüz kontrol saati gelmedi",
+          description: `${typed.startsAtHour}:00 sonrası aktif.`,
+          value: null,
+          threshold: null,
+          payload: {},
+        };
+      }
+      const metric = getMetricValues(targetRow, typed.metric);
+      if (!metric.target) {
+        return {
+          triggered: false,
+          title: "Hedef tanımlı değil",
+          description: `${rule.website.name} için ${metric.label} hedefi tanımlı değil.`,
+          value: metric.current,
+          threshold: null,
+          payload: { metric: typed.metric },
+        };
+      }
+      const minimumRequired = metric.target * (1 - (typed.shortfallPercent ?? 0) / 100);
+      const triggered = metric.current < minimumRequired;
+      return {
+        triggered,
+        title: triggered ? "Saat bazlı hedef altında" : "Hedefe ulaşıldı",
+        description: `${metric.label} şu an ${metric.current}. ${typed.startsAtHour ?? 23}:00 kontrol eşiği ${round(
+          minimumRequired
+        )}, hedef ${metric.target}.`,
+        value: metric.current,
+        threshold: round(minimumRequired),
+        payload: {
+          metric: typed.metric,
+          current: metric.current,
+          target: metric.target,
+          startsAtHour: typed.startsAtHour ?? 23,
           shortfallPercent: typed.shortfallPercent ?? 0,
         },
       };
