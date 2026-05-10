@@ -181,15 +181,18 @@ export default function TelegramPage() {
               >
                 {generating ? "Kod üretiliyor..." : "Bağlantı Kodu Üret"}
               </button>
-              {status?.linked ? (
-                <button
-                  type="button"
-                  onClick={() => void disconnect()}
-                  className="rounded-2xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600"
-                >
-                  {disconnecting ? "Kaldırılıyor..." : "Bağlantıyı Kaldır"}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => void disconnect()}
+                disabled={!status?.linked || disconnecting}
+                className="rounded-2xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+              >
+                {status?.linked
+                  ? disconnecting
+                    ? "Kaldırılıyor..."
+                    : "Bağlantıyı Kaldır"
+                  : "Bağlantı Yok"}
+              </button>
             </div>
           </div>
         </section>
