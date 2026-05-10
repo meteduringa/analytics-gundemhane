@@ -67,6 +67,7 @@ export async function PATCH(
           id: true,
           name: true,
           dailyUniqueTarget: true,
+          dailyDirectUniqueTarget: true,
           dailyPageviewTarget: true,
           telegramChatId: true,
         },

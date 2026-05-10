@@ -67,6 +67,9 @@ export async function POST(request: Request) {
 
   const payload = await request.json();
   const email = String(payload.email ?? "").trim().toLowerCase();
+  const telegramChatId = payload.telegramChatId
+    ? String(payload.telegramChatId).trim()
+    : null;
   const password = String(payload.password ?? "");
   const name = payload.name ? String(payload.name).trim() : null;
   const role = String(payload.role ?? "CUSTOMER");
@@ -92,6 +95,7 @@ export async function POST(request: Request) {
   const user = await prisma.user.create({
     data: {
       email,
+      telegramChatId,
       name,
       passwordHash,
       role: role === "ADMIN" ? "ADMIN" : "CUSTOMER",
@@ -136,6 +140,7 @@ export async function PATCH(request: Request) {
   const updates: {
     name?: string | null;
     email?: string;
+    telegramChatId?: string | null;
     role?: "ADMIN" | "CUSTOMER";
     passwordHash?: string;
     panelSections?: string[];
@@ -146,6 +151,11 @@ export async function PATCH(request: Request) {
   }
   if (payload.email !== undefined) {
     updates.email = String(payload.email).trim().toLowerCase();
+  }
+  if (payload.telegramChatId !== undefined) {
+    updates.telegramChatId = payload.telegramChatId
+      ? String(payload.telegramChatId).trim()
+      : null;
   }
   if (payload.role) {
     updates.role = String(payload.role) === "ADMIN" ? "ADMIN" : "CUSTOMER";

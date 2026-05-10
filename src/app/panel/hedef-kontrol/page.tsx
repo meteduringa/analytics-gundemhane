@@ -10,16 +10,22 @@ type TargetRow = {
   date: string;
   telegramChatId: string | null;
   dailyUniqueTarget: number | null;
+  dailyDirectUniqueTarget: number | null;
   dailyPageviewTarget: number | null;
   currentUnique: number;
+  currentDirectUnique: number;
   currentPageviews: number;
   remainingUnique: number | null;
+  remainingDirectUnique: number | null;
   remainingPageviews: number | null;
   progressUniquePercent: number | null;
+  progressDirectUniquePercent: number | null;
   progressPageviewsPercent: number | null;
   projectedUniqueAtMidnight: number | null;
+  projectedDirectUniqueAtMidnight: number | null;
   projectedPageviewsAtMidnight: number | null;
   uniqueRisk: "green" | "yellow" | "red" | "none";
+  directRisk: "green" | "yellow" | "red" | "none";
   pageviewRisk: "green" | "yellow" | "red" | "none";
   recordUpdatedAt: string | null;
 };
@@ -64,6 +70,7 @@ export default function TargetControlPage() {
       string,
       {
         dailyUniqueTarget: string;
+        dailyDirectUniqueTarget: string;
         dailyPageviewTarget: string;
         telegramChatId: string;
       }
@@ -107,6 +114,10 @@ export default function TargetControlPage() {
           next[row.websiteId] ??= {
             dailyUniqueTarget:
               row.dailyUniqueTarget !== null ? String(row.dailyUniqueTarget) : "",
+            dailyDirectUniqueTarget:
+              row.dailyDirectUniqueTarget !== null
+                ? String(row.dailyDirectUniqueTarget)
+                : "",
             dailyPageviewTarget:
               row.dailyPageviewTarget !== null
                 ? String(row.dailyPageviewTarget)
@@ -132,15 +143,19 @@ export default function TargetControlPage() {
     return rows.reduce(
       (acc, row) => {
         acc.currentUnique += row.currentUnique;
+        acc.currentDirectUnique += row.currentDirectUnique;
         acc.currentPageviews += row.currentPageviews;
         acc.projectedUnique += row.projectedUniqueAtMidnight ?? 0;
+        acc.projectedDirectUnique += row.projectedDirectUniqueAtMidnight ?? 0;
         acc.projectedPageviews += row.projectedPageviewsAtMidnight ?? 0;
         return acc;
       },
       {
         currentUnique: 0,
+        currentDirectUnique: 0,
         currentPageviews: 0,
         projectedUnique: 0,
+        projectedDirectUnique: 0,
         projectedPageviews: 0,
       }
     );
@@ -148,13 +163,18 @@ export default function TargetControlPage() {
 
   const updateDraft = (
     websiteId: string,
-    key: "dailyUniqueTarget" | "dailyPageviewTarget" | "telegramChatId",
+    key:
+      | "dailyUniqueTarget"
+      | "dailyDirectUniqueTarget"
+      | "dailyPageviewTarget"
+      | "telegramChatId",
     value: string
   ) => {
     setDrafts((prev) => ({
       ...prev,
       [websiteId]: {
         dailyUniqueTarget: prev[websiteId]?.dailyUniqueTarget ?? "",
+        dailyDirectUniqueTarget: prev[websiteId]?.dailyDirectUniqueTarget ?? "",
         dailyPageviewTarget: prev[websiteId]?.dailyPageviewTarget ?? "",
         telegramChatId: prev[websiteId]?.telegramChatId ?? "",
         [key]: value,
@@ -168,6 +188,7 @@ export default function TargetControlPage() {
     try {
       const draft = drafts[websiteId] ?? {
         dailyUniqueTarget: "",
+        dailyDirectUniqueTarget: "",
         dailyPageviewTarget: "",
         telegramChatId: "",
       };
@@ -177,6 +198,7 @@ export default function TargetControlPage() {
         body: JSON.stringify({
           websiteId,
           dailyUniqueTarget: draft.dailyUniqueTarget,
+          dailyDirectUniqueTarget: draft.dailyDirectUniqueTarget,
           dailyPageviewTarget: draft.dailyPageviewTarget,
           telegramChatId: draft.telegramChatId,
         }),
@@ -250,6 +272,14 @@ export default function TargetControlPage() {
           </div>
           <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+              Toplam Direct Tekil
+            </p>
+            <div className="mt-3 text-3xl font-bold text-slate-900">
+              {totals.currentDirectUnique}
+            </div>
+          </div>
+          <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
               Toplam Pageview
             </p>
             <div className="mt-3 text-3xl font-bold text-slate-900">
@@ -262,6 +292,14 @@ export default function TargetControlPage() {
             </p>
             <div className="mt-3 text-3xl font-bold text-slate-900">
               {totals.projectedUnique}
+            </div>
+          </div>
+          <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+              00:00 Direct Tahmini
+            </p>
+            <div className="mt-3 text-3xl font-bold text-slate-900">
+              {totals.projectedDirectUnique}
             </div>
           </div>
           <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
@@ -284,6 +322,10 @@ export default function TargetControlPage() {
                   <th className="px-4 py-3">Tekil Hedef</th>
                   <th className="px-4 py-3">00:00 Tekil</th>
                   <th className="px-4 py-3">Tekil Risk</th>
+                  <th className="px-4 py-3">Şu An Direct</th>
+                  <th className="px-4 py-3">Direct Hedef</th>
+                  <th className="px-4 py-3">00:00 Direct</th>
+                  <th className="px-4 py-3">Direct Risk</th>
                   <th className="px-4 py-3">Şu An PV</th>
                   <th className="px-4 py-3">PV Hedef</th>
                   <th className="px-4 py-3">00:00 PV</th>
@@ -310,6 +352,20 @@ export default function TargetControlPage() {
                         )}`}
                       >
                         {row.uniqueRisk}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{row.currentDirectUnique}</td>
+                    <td className="px-4 py-3">{row.dailyDirectUniqueTarget ?? "-"}</td>
+                    <td className="px-4 py-3">
+                      {row.projectedDirectUniqueAtMidnight ?? "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-semibold ${riskTone(
+                          row.directRisk
+                        )}`}
+                      >
+                        {row.directRisk}
                       </span>
                     </td>
                     <td className="px-4 py-3">{row.currentPageviews}</td>
@@ -352,6 +408,19 @@ export default function TargetControlPage() {
                             updateDraft(
                               row.websiteId,
                               "dailyPageviewTarget",
+                              event.target.value
+                            )
+                          }
+                          className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Direct hedef"
+                          value={drafts[row.websiteId]?.dailyDirectUniqueTarget ?? ""}
+                          onChange={(event) =>
+                            updateDraft(
+                              row.websiteId,
+                              "dailyDirectUniqueTarget",
                               event.target.value
                             )
                           }

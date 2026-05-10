@@ -66,6 +66,7 @@ export async function POST(request: Request) {
             id: true,
             name: true,
             dailyUniqueTarget: true,
+            dailyDirectUniqueTarget: true,
             dailyPageviewTarget: true,
             telegramChatId: true,
           },

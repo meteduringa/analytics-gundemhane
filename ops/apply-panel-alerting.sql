@@ -16,11 +16,18 @@ ALTER TABLE "analytics_websites"
   ADD COLUMN IF NOT EXISTS "siteUrl" TEXT,
   ADD COLUMN IF NOT EXISTS "primaryDomain" TEXT,
   ADD COLUMN IF NOT EXISTS "dailyUniqueTarget" INTEGER,
+  ADD COLUMN IF NOT EXISTS "dailyDirectUniqueTarget" INTEGER,
   ADD COLUMN IF NOT EXISTS "dailyPageviewTarget" INTEGER,
+  ADD COLUMN IF NOT EXISTS "telegramChatId" TEXT;
+
+ALTER TABLE "User"
   ADD COLUMN IF NOT EXISTS "telegramChatId" TEXT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "analytics_websites_primaryDomain_key"
   ON "analytics_websites" ("primaryDomain");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "User_telegramChatId_key"
+  ON "User" ("telegramChatId");
 
 CREATE TABLE IF NOT EXISTS "panel_alert_rules" (
   "id" TEXT NOT NULL,

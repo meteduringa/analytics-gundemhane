@@ -41,9 +41,10 @@ enum BIKEventType {
   CLIENT_ERROR
 }
 
-  model User {
+model User {
     id           String               @id @default(cuid())
     email        String               @unique
+    telegramChatId String?            @unique
     passwordHash String?
     name         String?
     role         UserRole             @default(CUSTOMER)
@@ -59,6 +60,7 @@ model AnalyticsWebsite {
   siteUrl        String?
   primaryDomain  String?                @unique
   dailyUniqueTarget Int?
+  dailyDirectUniqueTarget Int?
   dailyPageviewTarget Int?
   telegramChatId String?
   allowedDomains String[]

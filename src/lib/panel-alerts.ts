@@ -2,7 +2,7 @@ import { Prisma, type PanelAlertRule, type PanelAlertType } from "@prisma/client
 import { prisma } from "@/lib/prisma";
 import { getIstanbulDayRange, parseDayParam } from "@/lib/bik-time";
 
-export type AlertMetric = "unique" | "pageview";
+export type AlertMetric = "unique" | "pageview" | "direct";
 
 export type TargetPaceBelowConfig = {
   metric: AlertMetric;
@@ -45,16 +45,22 @@ export type TargetBoardRow = {
   date: string;
   telegramChatId: string | null;
   dailyUniqueTarget: number | null;
+  dailyDirectUniqueTarget: number | null;
   dailyPageviewTarget: number | null;
   currentUnique: number;
+  currentDirectUnique: number;
   currentPageviews: number;
   remainingUnique: number | null;
+  remainingDirectUnique: number | null;
   remainingPageviews: number | null;
   progressUniquePercent: number | null;
+  progressDirectUniquePercent: number | null;
   progressPageviewsPercent: number | null;
   projectedUniqueAtMidnight: number | null;
+  projectedDirectUniqueAtMidnight: number | null;
   projectedPageviewsAtMidnight: number | null;
   uniqueRisk: "green" | "yellow" | "red" | "none";
+  directRisk: "green" | "yellow" | "red" | "none";
   pageviewRisk: "green" | "yellow" | "red" | "none";
   recordUpdatedAt: string | null;
 };
@@ -72,8 +78,13 @@ const clampRatio = (value: number) => Math.min(Math.max(value, 0), 1);
 
 const round = (value: number) => Math.round(Number.isFinite(value) ? value : 0);
 
-const normalizeMetric = (value: unknown): AlertMetric =>
-  value === "pageview" ? "pageview" : "unique";
+const normalizeMetric = (value: unknown): AlertMetric => {
+  if (value === "pageview") return "pageview";
+  if (value === "direct" || value === "direct_unique" || value === "directUnique") {
+    return "direct";
+  }
+  return "unique";
+};
 
 const normalizeConfig = (
   type: PanelAlertType,
@@ -174,6 +185,7 @@ export const getTargetBoard = async (targetDate: Date) => {
       id: true,
       name: true,
       dailyUniqueTarget: true,
+      dailyDirectUniqueTarget: true,
       dailyPageviewTarget: true,
       telegramChatId: true,
       dailySimple: {
@@ -181,6 +193,7 @@ export const getTargetBoard = async (targetDate: Date) => {
         take: 1,
         select: {
           dailyUniqueUsers: true,
+          dailyDirectUniqueUsers: true,
           dailyPageviews: true,
           updatedAt: true,
         },
@@ -193,9 +206,14 @@ export const getTargetBoard = async (targetDate: Date) => {
   return websites.map<TargetBoardRow>((website) => {
     const record = website.dailySimple[0];
     const currentUnique = record?.dailyUniqueUsers ?? 0;
+    const currentDirectUnique = record?.dailyDirectUniqueUsers ?? 0;
     const currentPageviews = record?.dailyPageviews ?? 0;
     const projectedUniqueAtMidnight =
       elapsedRatio > 0 ? round(currentUnique / Math.max(elapsedRatio, 0.01)) : null;
+    const projectedDirectUniqueAtMidnight =
+      elapsedRatio > 0
+        ? round(currentDirectUnique / Math.max(elapsedRatio, 0.01))
+        : null;
     const projectedPageviewsAtMidnight =
       elapsedRatio > 0
         ? round(currentPageviews / Math.max(elapsedRatio, 0.01))
@@ -204,6 +222,11 @@ export const getTargetBoard = async (targetDate: Date) => {
     const remainingUnique =
       website.dailyUniqueTarget !== null && website.dailyUniqueTarget !== undefined
         ? Math.max(website.dailyUniqueTarget - currentUnique, 0)
+        : null;
+    const remainingDirectUnique =
+      website.dailyDirectUniqueTarget !== null &&
+      website.dailyDirectUniqueTarget !== undefined
+        ? Math.max(website.dailyDirectUniqueTarget - currentDirectUnique, 0)
         : null;
     const remainingPageviews =
       website.dailyPageviewTarget !== null &&
@@ -214,6 +237,10 @@ export const getTargetBoard = async (targetDate: Date) => {
     const progressUniquePercent =
       website.dailyUniqueTarget && website.dailyUniqueTarget > 0
         ? round((currentUnique / website.dailyUniqueTarget) * 100)
+        : null;
+    const progressDirectUniquePercent =
+      website.dailyDirectUniqueTarget && website.dailyDirectUniqueTarget > 0
+        ? round((currentDirectUnique / website.dailyDirectUniqueTarget) * 100)
         : null;
     const progressPageviewsPercent =
       website.dailyPageviewTarget && website.dailyPageviewTarget > 0
@@ -237,18 +264,27 @@ export const getTargetBoard = async (targetDate: Date) => {
       date: dayString,
       telegramChatId: website.telegramChatId ?? null,
       dailyUniqueTarget: website.dailyUniqueTarget ?? null,
+      dailyDirectUniqueTarget: website.dailyDirectUniqueTarget ?? null,
       dailyPageviewTarget: website.dailyPageviewTarget ?? null,
       currentUnique,
+      currentDirectUnique,
       currentPageviews,
       remainingUnique,
+      remainingDirectUnique,
       remainingPageviews,
       progressUniquePercent,
+      progressDirectUniquePercent,
       progressPageviewsPercent,
       projectedUniqueAtMidnight,
+      projectedDirectUniqueAtMidnight,
       projectedPageviewsAtMidnight,
       uniqueRisk: resolveRisk(
         website.dailyUniqueTarget,
         projectedUniqueAtMidnight
+      ),
+      directRisk: resolveRisk(
+        website.dailyDirectUniqueTarget,
+        projectedDirectUniqueAtMidnight
       ),
       pageviewRisk: resolveRisk(
         website.dailyPageviewTarget,
@@ -260,6 +296,14 @@ export const getTargetBoard = async (targetDate: Date) => {
 };
 
 const getMetricValues = (row: TargetBoardRow, metric: AlertMetric) => {
+  if (metric === "direct") {
+    return {
+      current: row.currentDirectUnique,
+      target: row.dailyDirectUniqueTarget,
+      projected: row.projectedDirectUniqueAtMidnight,
+      label: "direct tekil",
+    };
+  }
   if (metric === "pageview") {
     return {
       current: row.currentPageviews,
@@ -293,6 +337,7 @@ export const evaluatePanelAlertRule = async (
       id: string;
       name: string;
       dailyUniqueTarget: number | null;
+      dailyDirectUniqueTarget: number | null;
       dailyPageviewTarget: number | null;
       telegramChatId: string | null;
     };
@@ -490,6 +535,7 @@ export const buildAlertMessage = (
     evaluation.title,
     evaluation.description,
     `Gün: ${targetRow.date}`,
+    `Direct Tekil: ${targetRow.currentDirectUnique}`,
     `Tekil: ${targetRow.currentUnique}`,
     `Pageview: ${targetRow.currentPageviews}`,
   ].join("\n");

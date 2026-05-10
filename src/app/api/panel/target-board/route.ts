@@ -40,6 +40,10 @@ export async function PATCH(request: Request) {
     payload.dailyUniqueTarget === null || payload.dailyUniqueTarget === ""
       ? null
       : Number(payload.dailyUniqueTarget);
+  const dailyDirectUniqueTarget =
+    payload.dailyDirectUniqueTarget === null || payload.dailyDirectUniqueTarget === ""
+      ? null
+      : Number(payload.dailyDirectUniqueTarget);
   const dailyPageviewTarget =
     payload.dailyPageviewTarget === null || payload.dailyPageviewTarget === ""
       ? null
@@ -53,6 +57,7 @@ export async function PATCH(request: Request) {
     where: { id: websiteId },
     data: {
       dailyUniqueTarget,
+      dailyDirectUniqueTarget,
       dailyPageviewTarget,
       telegramChatId,
     },

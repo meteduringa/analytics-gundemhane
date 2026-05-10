@@ -22,6 +22,7 @@ type UserRow = {
   id: string;
   name?: string | null;
   email: string;
+  telegramChatId?: string | null;
   role: "ADMIN" | "CUSTOMER";
   panelSections?: string[];
   userWebsites: { website: Site }[];
@@ -44,6 +45,7 @@ export default function AdminUsersPage() {
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
+    telegramChatId: "",
     password: "",
     role: "CUSTOMER" as "ADMIN" | "CUSTOMER",
     websiteIds: [] as string[],
@@ -121,6 +123,7 @@ export default function AdminUsersPage() {
       setNewUser({
         name: "",
         email: "",
+        telegramChatId: "",
         password: "",
         role: "CUSTOMER",
         websiteIds: [],
@@ -237,6 +240,19 @@ export default function AdminUsersPage() {
               />
             </label>
             <label className="text-xs font-semibold text-slate-500">
+              Telegram Chat ID
+              <input
+                value={newUser.telegramChatId}
+                onChange={(event) =>
+                  setNewUser((prev) => ({
+                    ...prev,
+                    telegramChatId: event.target.value,
+                  }))
+                }
+                className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="text-xs font-semibold text-slate-500">
               Rol
               <select
                 value={newUser.role}
@@ -335,6 +351,7 @@ export default function AdminUsersPage() {
               <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">Telegram</th>
                   <th className="px-3 py-2">Rol</th>
                   <th className="px-3 py-2">Siteler</th>
                   <th className="px-3 py-2">Sekmeler</th>
@@ -345,7 +362,7 @@ export default function AdminUsersPage() {
               <tbody>
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-400">
+                    <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-400">
                       Kullanıcı bulunamadı.
                     </td>
                   </tr>
@@ -392,12 +409,14 @@ const UserRowItem = ({
   isSaving,
 }: RowProps) => {
   const [password, setPassword] = useState("");
+  const [telegramChatId, setTelegramChatId] = useState(user.telegramChatId ?? "");
   const [sections, setSections] = useState<string[]>(user.panelSections ?? []);
   const [websiteIds, setWebsiteIds] = useState(
     user.userWebsites?.map((item) => item.website.id) ?? []
   );
 
   useEffect(() => {
+    setTelegramChatId(user.telegramChatId ?? "");
     setSections(user.panelSections ?? []);
     setWebsiteIds(user.userWebsites?.map((item) => item.website.id) ?? []);
     setPassword("");
@@ -406,6 +425,15 @@ const UserRowItem = ({
   return (
     <tr className="border-b border-slate-100 last:border-none">
       <td className="px-3 py-2 font-medium text-slate-800">{user.email}</td>
+      <td className="px-3 py-2">
+        <input
+          type="text"
+          value={telegramChatId}
+          onChange={(event) => setTelegramChatId(event.target.value)}
+          placeholder="Chat ID"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+        />
+      </td>
       <td className="px-3 py-2 text-slate-700">{user.role}</td>
       <td className="px-3 py-2 text-slate-700">
         <div className="flex flex-wrap gap-2">
@@ -476,6 +504,7 @@ const UserRowItem = ({
             type="button"
             onClick={() =>
               onUpdate(user, {
+                telegramChatId,
                 panelSections: sections,
                 websiteIds,
                 password: password || undefined,

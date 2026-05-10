@@ -28,6 +28,7 @@ export async function GET(request: Request) {
             id: true,
             name: true,
             dailyUniqueTarget: true,
+            dailyDirectUniqueTarget: true,
             dailyPageviewTarget: true,
             telegramChatId: true,
           },

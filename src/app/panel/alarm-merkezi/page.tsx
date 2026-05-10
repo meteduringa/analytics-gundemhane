@@ -469,6 +469,7 @@ export default function AlarmCenterPage() {
                   className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
                 >
                   <option value="unique">Tekil</option>
+                  <option value="direct">Direct Tekil</option>
                   <option value="pageview">Pageview</option>
                 </select>
               </label>
