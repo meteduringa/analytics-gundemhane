@@ -139,7 +139,7 @@ export async function POST(request: Request) {
     await sendTelegramMessage({
       chatId,
       text:
-        "Bu sohbet henüz bir kullanıcı veya site ile eşleştirilmemiş. Admin panelindeki kullanıcı veya hedef ekranından Telegram Chat ID tanımlanmalı.",
+        `Bu sohbet henüz bir kullanıcı veya site ile eşleştirilmemiş.\n\nChat ID: ${chatId}\n\nBu değeri admin panelindeki kullanıcı veya hedef ekranına tanımlaman gerekiyor.`,
     });
     return NextResponse.json({ ok: true, authorized: false });
   }
