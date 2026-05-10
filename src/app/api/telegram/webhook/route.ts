@@ -42,16 +42,15 @@ const buildHelpMessage = () =>
     "/hedef — Bugünkü hedef durumunu gösterir",
     "/siteler — Yetkili olduğun siteleri listeler",
     "/alarmlar — Alarm durumlarını gösterir",
-    "/alarmac ANAHTAR [site] — Alarmı açar",
-    "/alarmkapat ANAHTAR [site] — Alarmı kapatır",
     "/testalarm — Test mesajı gönderir",
     "/baglan KOD — Telegram hesabını panel hesabına bağlar",
     "/baglantikes — Telegram hesabı bağlantısını kaldırır",
     "/yardim — Yardım metni",
     "",
+    "Alarm açma, kapatma ve ayar değiştirme işlemleri yalnızca admin panelinden yapılır.",
     "Birden fazla siten varsa komuta site adı ekleyebilirsin.",
     "Örnek: /rakam haber expres",
-    "Örnek: /alarmac 23tekil",
+    "Örnek: /hedef gazete arena",
   ].join("\n");
 
 const buildStatsLine = (row: TargetBoardRow) =>
@@ -75,15 +74,6 @@ const buildTargetLine = (row: TargetBoardRow) =>
 const findMatchingRows = (rows: TargetBoardRow[], query: string) => {
   const normalizedQuery = normalize(query);
   return rows.filter((row) => normalize(row.websiteName).includes(normalizedQuery));
-};
-
-const resolveShortcut = (value: string) => {
-  const normalizedValue = normalize(value);
-  return (
-    CUSTOMER_ALERT_SHORTCUTS.find((item) =>
-      item.aliases.some((alias) => normalize(alias) === normalizedValue)
-    ) ?? null
-  );
 };
 
 const buildAlarmCatalogMessage = () =>
@@ -166,27 +156,6 @@ const getAuthorizedAlarmRules = async (websiteIds: string[]) => {
     },
     orderBy: [{ website: { name: "asc" } }, { name: "asc" }],
   });
-};
-
-const resolveSingleRowForToggle = (
-  rows: TargetBoardRow[],
-  siteQuery: string
-) => {
-  const matchingRows = siteQuery ? findMatchingRows(rows, siteQuery) : rows;
-  if (matchingRows.length === 0) {
-    return {
-      error: siteQuery ? `Eşleşen site bulunamadı: ${siteQuery}` : "Yetkili site bulunamadı.",
-      row: null,
-    };
-  }
-  if (matchingRows.length > 1) {
-    return {
-      error:
-        "Birden fazla site eşleşti. Komutu site adıyla tekrar yaz. Örnek: /alarmac 23tekil haber expres",
-      row: null,
-    };
-  }
-  return { error: null, row: matchingRows[0] };
 };
 
 const unlinkTelegramAccount = async (chatId: string) => {
@@ -337,79 +306,24 @@ export async function POST(request: Request) {
 
       const message =
         lines.length > 0
-          ? ["Alarm durumları:", ...lines, "", buildAlarmCatalogMessage()].join("\n")
-          : `Bu hesaba tanımlı yönetilebilir alarm bulunamadı.\n\n${buildAlarmCatalogMessage()}`;
+          ? [
+              "Alarm durumları:",
+              ...lines,
+              "",
+              "Not: Alarm açma, kapatma ve ayar değişikliği yalnızca admin panelinden yapılır.",
+              buildAlarmCatalogMessage(),
+            ].join("\n")
+          : `Bu hesaba tanımlı yönetilebilir alarm bulunamadı.\n\nNot: Alarm açma, kapatma ve ayar değişikliği yalnızca admin panelinden yapılır.\n\n${buildAlarmCatalogMessage()}`;
 
       await sendTelegramMessage({ chatId, text: message });
       break;
     }
     case "/alarmac":
     case "/alarmkapat": {
-      const [shortcutInput, ...siteParts] = rest;
-      if (!shortcutInput) {
-        await sendTelegramMessage({
-          chatId,
-          text: `Kullanım:\n${command} ANAHTAR [site]\n\n${buildAlarmCatalogMessage()}`,
-        });
-        break;
-      }
-
-      const shortcut = resolveShortcut(shortcutInput);
-      if (!shortcut) {
-        await sendTelegramMessage({
-          chatId,
-          text: `Bilinmeyen alarm anahtarı: ${shortcutInput}\n\n${buildAlarmCatalogMessage()}`,
-        });
-        break;
-      }
-
-      const siteQuery = siteParts.join(" ").trim();
-      const { row, error } = resolveSingleRowForToggle(rows, siteQuery);
-      if (!row) {
-        await sendTelegramMessage({ chatId, text: error ?? "Site çözümlenemedi." });
-        break;
-      }
-
-      const rule = await prisma.panelAlertRule.findFirst({
-        where: {
-          websiteId: row.websiteId,
-          name: shortcut.ruleName,
-        },
-        select: {
-          id: true,
-          isActive: true,
-        },
-      });
-
-      if (!rule) {
-        await sendTelegramMessage({
-          chatId,
-          text: `${row.websiteName} için ${shortcut.key} alarmı tanımlı değil. Yönetici önce preset uygulamalı.`,
-        });
-        break;
-      }
-
-      const shouldActivate = command === "/alarmac";
-      if (rule.isActive === shouldActivate) {
-        await sendTelegramMessage({
-          chatId,
-          text: `${row.websiteName} için ${shortcut.key} alarmı zaten ${
-            shouldActivate ? "açık" : "kapalı"
-          }.`,
-        });
-        break;
-      }
-
-      await prisma.panelAlertRule.update({
-        where: { id: rule.id },
-        data: { isActive: shouldActivate },
-      });
-
       await sendTelegramMessage({
         chatId,
-        text: `${row.websiteName} için ${shortcut.key} alarmı ${
-          shouldActivate ? "açıldı" : "kapatıldı"
-        }.`,
+        text:
+          "Alarm yönetimi Telegram üzerinden kapatıldı.\nAlarm açma, kapatma ve ayar değişikliği yalnızca admin panelindeki Alarm Merkezi ekranından yapılır.",
       });
       break;
     }
