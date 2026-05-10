@@ -23,6 +23,14 @@ enum AnalyticsAlarmType {
   ONLINE_BELOW
 }
 
+enum PanelAlertType {
+  TARGET_PACE_BELOW
+  PROJECTED_MISS
+  STAGNATION
+  CACHE_STALE
+  TRAFFIC_DROP
+}
+
 enum BIKEventType {
   PAGE_VIEW
   HEARTBEAT
@@ -48,6 +56,11 @@ enum BIKEventType {
 model AnalyticsWebsite {
   id             String                 @id @default(uuid())
   name           String
+  siteUrl        String?
+  primaryDomain  String?                @unique
+  dailyUniqueTarget Int?
+  dailyPageviewTarget Int?
+  telegramChatId String?
   allowedDomains String[]
   whitelistWebsiteIds String[]           @default([])
   blacklistWebsiteIds String[]           @default([])
@@ -65,6 +78,8 @@ model AnalyticsWebsite {
   bikRollupDays  BIKRollupDay[]
   bikCalibrationRuns BIKCalibrationRun[]
   dailySimple    AnalyticsDailySimple[]
+  panelAlertRules PanelAlertRule[]
+  panelAlertEvents PanelAlertEvent[]
 
   @@map("analytics_websites")
 }
@@ -154,6 +169,44 @@ model AnalyticsAlarm {
 
     @@index([websiteId, isActive])
   @@map("analytics_alarms")
+}
+
+model PanelAlertRule {
+  id               String         @id @default(uuid())
+  websiteId        String
+  name             String
+  type             PanelAlertType
+  config           Json
+  telegramEnabled  Boolean        @default(true)
+  telegramChatId   String?
+  cooldownSeconds  Int            @default(900)
+  isActive         Boolean        @default(true)
+  lastTriggeredAt  DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  website          AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  events           PanelAlertEvent[]
+
+  @@index([websiteId, isActive])
+  @@map("panel_alert_rules")
+}
+
+model PanelAlertEvent {
+  id                 String          @id @default(uuid())
+  alertRuleId        String
+  websiteId          String
+  message            String
+  payload            Json?
+  deliveredToTelegram Boolean        @default(false)
+  telegramChatId     String?
+  telegramError      String?
+  triggeredAt        DateTime        @default(now())
+  alertRule          PanelAlertRule  @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  website            AnalyticsWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([alertRuleId, triggeredAt])
+  @@index([websiteId, triggeredAt])
+  @@map("panel_alert_events")
 }
 
 model BIKConfig {

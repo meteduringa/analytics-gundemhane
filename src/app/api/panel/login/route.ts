@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import {
+  createPanelSessionToken,
+  setPanelSessionCookie,
+} from "@/lib/panel-session";
 
 export async function POST(request: Request) {
   const payload = await request.json();
@@ -33,13 +37,16 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      panelSections: user.panelSections ?? [],
-    },
-  });
+  const userPayload = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    panelSections: user.panelSections ?? [],
+  };
+
+  const token = createPanelSessionToken(userPayload);
+  await setPanelSessionCookie(token);
+
+  return NextResponse.json({ user: userPayload });
 }

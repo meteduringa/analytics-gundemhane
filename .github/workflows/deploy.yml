@@ -27,6 +27,7 @@ jobs:
             set -euo pipefail
             cleanup() {
               sudo systemctl start analytics-recompute.service >/dev/null 2>&1 || true
+              sudo systemctl start analytics-alert.service >/dev/null 2>&1 || true
             }
             trap cleanup EXIT
             git config --global --add safe.directory /opt/analytics
@@ -34,11 +35,16 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             chmod +x ops/*.sh || true
+            sudo cp ops/analytics-alert.service /etc/systemd/system/analytics-alert.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable analytics-alert.service >/dev/null 2>&1 || true
             if [ -f /tmp/codex-cache-all-5m.pid ]; then
               kill "$(cat /tmp/codex-cache-all-5m.pid)" >/dev/null 2>&1 || true
               rm -f /tmp/codex-cache-all-5m.pid
             fi
             sudo systemctl stop analytics-recompute.service >/dev/null 2>&1 || true
+            sudo systemctl stop analytics-alert.service >/dev/null 2>&1 || true
+            docker exec -i analytics-postgres-1 psql -U analytics -d analytics < ops/apply-panel-alerting.sql
             docker build -t analytics-app:latest .
             docker network inspect analytics_default >/dev/null 2>&1 || docker network create analytics_default
             docker rm -f analytics-app-1 >/dev/null 2>&1 || true
@@ -59,6 +65,8 @@ jobs:
               -e NEXTAUTH_URL='https://giris.elmasistatistik.com.tr' \
               -e NEXT_PUBLIC_HOST_URL='https://giris.elmasistatistik.com.tr' \
               -e REDIS_URL='redis://analytics-redis-1:6379' \
+              -e TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}' \
+              -e TELEGRAM_DEFAULT_CHAT_ID='${{ secrets.TELEGRAM_DEFAULT_CHAT_ID }}' \
               -e TZ='Europe/Istanbul' \
               analytics-app:latest \
               npm start

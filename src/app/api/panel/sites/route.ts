@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
+import { readPanelSession } from "@/lib/panel-session";
 
 const normalizeUrl = (value: string) => {
   try {
@@ -19,26 +19,20 @@ const buildAllowedDomains = (hostname: string) => {
 };
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get("userId") ?? "";
-  const role = searchParams.get("role") ?? "";
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
 
-  if (role === "ADMIN") {
+  if (session.role === "ADMIN") {
     const sites = await prisma.analyticsWebsite.findMany({
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json({ sites });
   }
 
-  if (!userId) {
-    return NextResponse.json(
-      { error: "Kullanıcı bilgisi gerekli." },
-      { status: 400 }
-    );
-  }
-
   const links = await prisma.analyticsUserWebsite.findMany({
-    where: { userId },
+    where: { userId: session.id },
     include: { website: true },
     orderBy: { createdAt: "desc" },
   });
@@ -64,16 +58,17 @@ const parseIds = (input: unknown) => {
 };
 
 export async function POST(request: Request) {
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
+  if (session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
+  }
+
   const payload = await request.json();
   const name = String(payload.name ?? "").trim();
   const url = String(payload.url ?? "").trim();
-  const actorRole = String(payload.actorRole ?? "");
-  const userEmail = String(payload.userEmail ?? "").trim();
-  const userPassword = String(payload.userPassword ?? "");
-
-  if (actorRole !== "ADMIN") {
-    return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
-  }
 
   if (!name || !url) {
     return NextResponse.json(
@@ -83,51 +78,51 @@ export async function POST(request: Request) {
   }
 
   const parsedUrl = normalizeUrl(url);
+  const siteUrl = parsedUrl.origin.replace(/\/+$/, "");
+  const primaryDomain = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
   const allowedDomains = buildAllowedDomains(parsedUrl.hostname);
+
+  const existingWebsite = await prisma.analyticsWebsite.findFirst({
+    where: {
+      OR: [
+        { primaryDomain },
+        { allowedDomains: { hasSome: allowedDomains } },
+      ],
+    },
+  });
+
+  if (existingWebsite) {
+    return NextResponse.json(
+      {
+        error: "Bu domain için zaten bir site kaydı var.",
+        websiteId: existingWebsite.id,
+      },
+      { status: 409 }
+    );
+  }
 
   const website = await prisma.analyticsWebsite.create({
     data: {
       name,
+      siteUrl,
+      primaryDomain,
       allowedDomains,
     },
   });
 
-  let createdUser = null;
-  if (userEmail) {
-    let user = await prisma.user.findUnique({ where: { email: userEmail } });
-    if (!user) {
-      if (!userPassword) {
-        return NextResponse.json(
-          { error: "Yetkili için şifre zorunludur." },
-          { status: 400 }
-        );
-      }
-      const passwordHash = await bcrypt.hash(userPassword, 10);
-      user = await prisma.user.create({
-        data: {
-          email: userEmail,
-          passwordHash,
-          role: "CUSTOMER",
-          name: userEmail.split("@")[0],
-        },
-      });
-      createdUser = { id: user.id, email: user.email };
-    }
-
-    await prisma.analyticsUserWebsite.create({
-      data: {
-        userId: user.id,
-        websiteId: website.id,
-      },
-    });
-  }
-
-  return NextResponse.json({ website, user: createdUser });
+  return NextResponse.json({ website });
 }
 
 export async function PATCH(request: Request) {
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
+  if (session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
+  }
+
   const payload = await request.json();
-  const actorRole = String(payload.actorRole ?? "");
   const websiteId = String(payload.websiteId ?? "");
   const whitelistWebsiteIds =
     payload.whitelistWebsiteIds !== undefined
@@ -138,9 +133,6 @@ export async function PATCH(request: Request) {
       ? parseIds(payload.blacklistWebsiteIds)
       : null;
 
-  if (actorRole !== "ADMIN") {
-    return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
-  }
   if (!websiteId) {
     return NextResponse.json(
       { error: "Website ID gerekli." },

@@ -328,6 +328,11 @@ export default function GeneralAnalysisPage() {
               {isLoading ? "Analiz ediliyor..." : "Analiz Et"}
             </button>
           </div>
+
+          <p className="mt-4 text-xs text-slate-500">
+            Bu ekran sadece analiz sorgusu çalıştırır. Recompute işlemleri ayrı{" "}
+            <span className="font-semibold">Recompute</span> ekranındadır.
+          </p>
         </div>
 
         {error && (

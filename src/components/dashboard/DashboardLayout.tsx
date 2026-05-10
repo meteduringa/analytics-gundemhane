@@ -18,6 +18,9 @@ const customerOnlyItems = [
 const adminOnlyItems = [
   { key: "source", label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
   { key: "general", label: "Genel Analiz", href: "/panel/genel-analiz" },
+  { key: "targets", label: "Hedef Kontrol", href: "/panel/hedef-kontrol" },
+  { key: "alerts", label: "Alarm Merkezi", href: "/panel/alarm-merkezi" },
+  { key: "recompute", label: "Recompute", href: "/panel/recompute" },
   { key: "users", label: "Kullanıcılar", href: "/panel/admin-kullanicilar" },
 ];
 
@@ -78,7 +81,10 @@ const DashboardLayout = ({ children }: LayoutProps) => {
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-full border border-white/60 px-4 py-1 text-sm font-semibold text-white transition hover:bg-white/10"
-              onClick={() => {
+              onClick={async () => {
+                try {
+                  await fetch("/api/panel/logout", { method: "POST" });
+                } catch {}
                 window.localStorage.removeItem("auth");
                 window.localStorage.removeItem("user");
                 window.location.href = "/login";

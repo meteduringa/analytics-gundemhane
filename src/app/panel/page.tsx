@@ -42,6 +42,18 @@ const formatIstanbulDateTime = (value: Date | string | null | undefined) => {
   });
 };
 
+const formatIstanbulDate = (value: string | null | undefined) => {
+  if (!value) return "-";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("tr-TR", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+};
+
 const PanelPage = () => {
   const router = useRouter();
   const [dateInput, setDateInput] = useState(() =>
@@ -68,33 +80,8 @@ const PanelPage = () => {
   >([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const [autoRecomputeEnabled, setAutoRecomputeEnabled] = useState(false);
-  const [autoRecomputeStartedAt, setAutoRecomputeStartedAt] =
-    useState<Date | null>(null);
-  const [autoRecomputeBaseline, setAutoRecomputeBaseline] =
-    useState<MetricsSnapshot | null>(null);
   const refreshSeq = useRef(0);
   const activeController = useRef<AbortController | null>(null);
-  const autoRecomputeInFlight = useRef(false);
-
-  const todayValue = formatDateInput(new Date());
-
-  const captureMetricsSnapshot = (payload: MetricsSnapshot | null) => {
-    if (!payload) return null;
-    return {
-      daily_unique_users: payload.daily_unique_users,
-      daily_direct_unique_users: payload.daily_direct_unique_users,
-      daily_pageviews: payload.daily_pageviews,
-      daily_avg_time_on_site_seconds_per_unique:
-        payload.daily_avg_time_on_site_seconds_per_unique,
-      daily_popcent_unique_users: payload.daily_popcent_unique_users,
-      daily_popcent_pageviews: payload.daily_popcent_pageviews,
-      as_of_local: payload.as_of_local,
-      as_of_utc: payload.as_of_utc,
-      record_updated_at: payload.record_updated_at,
-      day_start_local: payload.day_start_local,
-    };
-  };
 
   const refreshAll = async (
     siteId: string,
@@ -172,56 +159,6 @@ const PanelPage = () => {
     }
   };
 
-  const recomputeDay = async (siteId: string, dateValue: string) => {
-    if (!siteId || !dateValue) return;
-    try {
-      await fetch("/api/analytics/simple/recompute", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          siteId,
-          date: dateValue,
-        }),
-      });
-    } catch {
-      // Ignore recompute failures here; the subsequent fetch will expose stale data.
-    }
-  };
-
-  const handleManualRefresh = async () => {
-    if (!selectedSiteId) return;
-    setIsRefreshing(true);
-    try {
-      await recomputeDay(selectedSiteId, selectedDate);
-      await refreshAll(selectedSiteId, selectedDate, {
-        silent: true,
-        includeTopPages: viewMode !== "live",
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const runAutoRecomputeCycle = async (resetBaseline: boolean) => {
-    if (!selectedSiteId || autoRecomputeInFlight.current) return;
-    autoRecomputeInFlight.current = true;
-    try {
-      await recomputeDay(selectedSiteId, selectedDate);
-      const payload = await refreshAll(selectedSiteId, selectedDate, {
-        silent: true,
-        includeTopPages: false,
-      });
-      if (payload && resetBaseline) {
-        setAutoRecomputeBaseline(captureMetricsSnapshot(payload));
-        setAutoRecomputeStartedAt(new Date());
-      }
-    } finally {
-      autoRecomputeInFlight.current = false;
-    }
-  };
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     const isAuthorized = window.localStorage.getItem("auth") === "1";
@@ -268,7 +205,6 @@ const PanelPage = () => {
     if (!user) return;
     if (!selectedSiteId) return;
     if (viewMode !== "live") return;
-    if (autoRecomputeEnabled) return;
     const interval = window.setInterval(() => {
       refreshAll(selectedSiteId, selectedDate, {
         silent: true,
@@ -276,37 +212,16 @@ const PanelPage = () => {
       });
     }, 60000);
     return () => window.clearInterval(interval);
-  }, [autoRecomputeEnabled, selectedDate, selectedSiteId, user, viewMode]);
-
-  useEffect(() => {
-    if (!autoRecomputeEnabled) {
-      setAutoRecomputeStartedAt(null);
-      setAutoRecomputeBaseline(null);
-      return;
-    }
-    if (!selectedSiteId) return;
-    void runAutoRecomputeCycle(true);
-    const interval = window.setInterval(() => {
-      void runAutoRecomputeCycle(false);
-    }, 60000);
-    return () => window.clearInterval(interval);
-  }, [autoRecomputeEnabled, selectedDate, selectedSiteId]);
+  }, [selectedDate, selectedSiteId, user, viewMode]);
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
     [selectedSiteId, sites]
   );
 
-  const autoRecomputeDelta = useMemo(() => {
-    if (!metrics || !autoRecomputeBaseline) return null;
-    return {
-      unique: metrics.daily_unique_users - autoRecomputeBaseline.daily_unique_users,
-      direct:
-        metrics.daily_direct_unique_users -
-        autoRecomputeBaseline.daily_direct_unique_users,
-      pageviews: metrics.daily_pageviews - autoRecomputeBaseline.daily_pageviews,
-    };
-  }, [autoRecomputeBaseline, metrics]);
+  const dataCalculatedAtLabel = metrics?.record_updated_at
+    ? formatIstanbulDateTime(metrics.record_updated_at)
+    : "Henüz hesaplanmadı";
 
   if (!ready) {
     return null;
@@ -369,97 +284,55 @@ const PanelPage = () => {
         dateValue={dateInput}
         onDateChange={setDateInput}
         onFilter={() => setSelectedDate(dateInput)}
-        onRefresh={() => {
-          void handleManualRefresh();
-        }}
         disableDate={viewMode === "live"}
       />
-
-      <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-slate-900">
-              Otomatik Recompute
-            </p>
-            <p className="text-xs text-slate-500">
-              Açıkken dakikada 1 recompute yapar. Kapatınca ek yük durur.
-            </p>
-            <p className="text-xs text-slate-400">
-              Açınca tarih bugüne alınır ve aynı ekranda artış takip edilir.
-            </p>
-            {autoRecomputeEnabled && autoRecomputeDelta && (
-              <p className="text-xs font-medium text-emerald-700">
-                Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
-                {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
-              </p>
-            )}
-            {autoRecomputeEnabled && autoRecomputeStartedAt && (
-              <p className="text-xs text-slate-400">
-                Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
-              </p>
-            )}
-          </div>
-
-          <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
-            <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
-            <button
-              type="button"
-              onClick={() => {
-                if (!autoRecomputeEnabled) {
-                  setDateInput(todayValue);
-                  setSelectedDate(todayValue);
-                }
-                setAutoRecomputeEnabled((current) => !current);
-              }}
-              className={`relative h-7 w-12 rounded-full transition ${
-                autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
-              }`}
-              aria-pressed={autoRecomputeEnabled}
-              aria-label="Otomatik recompute"
-            >
-              <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-                  autoRecomputeEnabled ? "left-6" : "left-1"
-                }`}
-              />
-            </button>
-          </label>
-        </div>
-      </div>
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
       )}
-      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-        <span>Veriler arka planda 1 dakikada bir güncellenir.</span>
-        {lastUpdatedAt && (
-          <span>
-            Son güncelleme:{" "}
-            {formatIstanbulDateTime(lastUpdatedAt)}
-          </span>
-        )}
-        {metrics?.record_updated_at && (
-          <span>
-            Cache zamanı:{" "}
-            {formatIstanbulDateTime(metrics.record_updated_at)}
-          </span>
-        )}
+
+      <div className="rounded-3xl border border-slate-200/70 bg-slate-50/80 p-4 shadow-sm shadow-slate-900/5">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              Veri Kapsamı
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {viewMode === "live"
+                ? `Bugün (${formatIstanbulDate(selectedDate)})`
+                : formatIstanbulDate(selectedDate)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              Veri Hesaplanma Zamanı
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {dataCalculatedAtLabel}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Ekrandaki rakamlar en son bu saatte cache&apos;e yazıldı.
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              Ekran Okuma Zamanı
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {lastUpdatedAt ? formatIstanbulDateTime(lastUpdatedAt) : "-"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Tarayıcı bu veriyi en son bu saatte çekti.
+            </p>
+          </div>
+        </div>
       </div>
-      {viewMode === "live" && (metrics?.as_of_utc || metrics?.as_of_local) && (
-        <p className="text-xs text-slate-500">
-          Anlık veri zamanı:{" "}
-          {formatIstanbulDateTime(metrics?.as_of_utc ?? metrics?.as_of_local)}{" "}
-          {metrics.record_updated_at
-            ? `(cache: ${formatIstanbulDateTime(metrics.record_updated_at)})`
-            : ""}
-        </p>
-      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatsCard
           title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail={viewMode === "live" ? "Clean cache (1 dk)" : "Seçilen gün"}
+          detail={viewMode === "live" ? "Bugünkü canlı özet" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
@@ -468,7 +341,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (1 dk)"
+              ? "Bugünkü canlı özet"
               : "Referrer boş (direct)"
           }
           accent="text-cyan-700"
@@ -479,7 +352,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_pageviews ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (1 dk)"
+              ? "Bugünkü canlı özet"
               : "Deduped görüntülenme"
           }
           accent="text-indigo-700"
@@ -627,86 +500,55 @@ const PanelPage = () => {
         dateValue={dateInput}
         onDateChange={setDateInput}
         onFilter={() => setSelectedDate(dateInput)}
-        onRefresh={() => {
-          void handleManualRefresh();
-        }}
         disableDate={viewMode === "live"}
       />
-
-      <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm shadow-slate-900/5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-slate-900">
-              Otomatik Recompute
-            </p>
-            <p className="text-xs text-slate-500">
-              Açıkken dakikada 1 recompute yapar. Kapatınca ek yük durur.
-            </p>
-            <p className="text-xs text-slate-400">
-              Açınca tarih bugüne alınır ve aynı ekranda artış takip edilir.
-            </p>
-            {autoRecomputeEnabled && autoRecomputeDelta && (
-              <p className="text-xs font-medium text-emerald-700">
-                Başlangıçtan beri: +{autoRecomputeDelta.unique} tekil, +
-                {autoRecomputeDelta.direct} direct, +{autoRecomputeDelta.pageviews} pageview
-              </p>
-            )}
-            {autoRecomputeEnabled && autoRecomputeStartedAt && (
-              <p className="text-xs text-slate-400">
-                Başlangıç: {formatIstanbulDateTime(autoRecomputeStartedAt)}
-              </p>
-            )}
-          </div>
-
-          <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
-            <span>{autoRecomputeEnabled ? "Açık" : "Kapalı"}</span>
-            <button
-              type="button"
-              onClick={() => {
-                if (!autoRecomputeEnabled) {
-                  setDateInput(todayValue);
-                  setSelectedDate(todayValue);
-                }
-                setAutoRecomputeEnabled((current) => !current);
-              }}
-              className={`relative h-7 w-12 rounded-full transition ${
-                autoRecomputeEnabled ? "bg-emerald-500" : "bg-slate-300"
-              }`}
-              aria-pressed={autoRecomputeEnabled}
-              aria-label="Otomatik recompute"
-            >
-              <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
-                  autoRecomputeEnabled ? "left-6" : "left-1"
-                }`}
-              />
-            </button>
-          </label>
-        </div>
-      </div>
 
       {isRefreshing && (
         <p className="text-xs text-slate-400">Güncelleniyor...</p>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-        {lastUpdatedAt && (
-          <span>
-            Son güncelleme: {formatIstanbulDateTime(lastUpdatedAt)}
-          </span>
-        )}
-        {metrics?.record_updated_at && (
-          <span>
-            Cache zamanı: {formatIstanbulDateTime(metrics.record_updated_at)}
-          </span>
-        )}
+      <div className="rounded-3xl border border-slate-200/70 bg-slate-50/80 p-4 shadow-sm shadow-slate-900/5">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              Veri Kapsamı
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {viewMode === "live"
+                ? `Bugün (${formatIstanbulDate(selectedDate)})`
+                : formatIstanbulDate(selectedDate)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              Veri Hesaplanma Zamanı
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {dataCalculatedAtLabel}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Ekrandaki rakamlar en son bu saatte cache&apos;e yazıldı.
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              Ekran Okuma Zamanı
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {lastUpdatedAt ? formatIstanbulDateTime(lastUpdatedAt) : "-"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Tarayıcı bu veriyi en son bu saatte çekti.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatsCard
           title={`${viewMode === "live" ? "Anlık (Temiz)" : "Günlük"} Tekil`}
           value={`${metrics?.daily_unique_users ?? 0}`}
-          detail={viewMode === "live" ? "Clean cache (1 dk)" : "Seçilen gün"}
+          detail={viewMode === "live" ? "Bugünkü canlı özet" : "Seçilen gün"}
           accent="text-emerald-700"
           tone="bg-emerald-50"
         />
@@ -715,7 +557,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_direct_unique_users ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (1 dk)"
+              ? "Bugünkü canlı özet"
               : "Referrer boş (direct)"
           }
           accent="text-cyan-700"
@@ -726,7 +568,7 @@ const PanelPage = () => {
           value={`${metrics?.daily_pageviews ?? 0}`}
           detail={
             viewMode === "live"
-              ? "Clean cache (1 dk)"
+              ? "Bugünkü canlı özet"
               : "Deduped görüntülenme"
           }
           accent="text-indigo-700"

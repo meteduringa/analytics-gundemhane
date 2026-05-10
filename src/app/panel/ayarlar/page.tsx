@@ -239,16 +239,16 @@ const SettingsPage = () => {
   const [snippet, setSnippet] = useState("");
   const [inlineSnippet, setInlineSnippet] = useState("");
   const [sites, setSites] = useState<
-    { id: string; name: string; allowedDomains: string[] }[]
+    {
+      id: string;
+      name: string;
+      siteUrl?: string | null;
+      primaryDomain?: string | null;
+      allowedDomains: string[];
+    }[]
   >([]);
   const [sitesLoading, setSitesLoading] = useState(false);
-  const [createdUser, setCreatedUser] = useState<{
-    email: string;
-    password: string;
-  } | null>(null);
   const [copied, setCopied] = useState<"external" | "inline" | null>(null);
-  const [userEmail, setUserEmail] = useState("");
-  const [userPassword, setUserPassword] = useState("");
   const [hostUrl, setHostUrl] = useState(fallbackHostUrl);
 
   useEffect(() => {
@@ -275,14 +275,14 @@ const SettingsPage = () => {
       if (!user) return;
       setSitesLoading(true);
       try {
-        const params = new URLSearchParams({
-          userId: user.id,
-          role: user.role,
-        });
-        const response = await fetch(`/api/panel/sites?${params.toString()}`);
+        const response = await fetch("/api/panel/sites");
         const payload = await response.json();
         if (response.ok) {
           setSites(payload.sites ?? []);
+        } else if (response.status === 401) {
+          window.localStorage.removeItem("auth");
+          window.localStorage.removeItem("user");
+          router.replace("/login");
         }
       } finally {
         setSitesLoading(false);
@@ -304,17 +304,12 @@ const SettingsPage = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
-    setCreatedUser(null);
     if (!siteName.trim() || !siteUrl.trim()) {
       setError("Lütfen site adı ve site URL alanlarını doldurun.");
       return;
     }
     if (!normalizedDomain) {
       setError("Site URL geçerli değil.");
-      return;
-    }
-    if (userEmail && !userPassword) {
-      setError("Yetkili için şifre zorunludur.");
       return;
     }
     if (!user) {
@@ -329,9 +324,6 @@ const SettingsPage = () => {
         body: JSON.stringify({
           name: siteName,
           url: siteUrl,
-          actorRole: user.role,
-          userEmail: userEmail || undefined,
-          userPassword: userPassword || undefined,
         }),
       });
       const payload = await response.json();
@@ -344,13 +336,8 @@ const SettingsPage = () => {
       setSnippet(external);
       setInlineSnippet(inline);
       setSites((prev) => [payload.website, ...prev]);
-      if (payload.user?.email) {
-        setCreatedUser({ email: payload.user.email, password: userPassword });
-      }
       setSiteName("");
       setSiteUrl("");
-      setUserEmail("");
-      setUserPassword("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Site oluşturulamadı.");
     } finally {
@@ -384,7 +371,7 @@ const SettingsPage = () => {
             Site Ekle ve Snippet Üret
           </h1>
           <p className="text-sm text-slate-500">
-            Site bilgilerini gir, otomatik takip kodunu kopyala.
+            Siteyi oluştur. Kullanıcı atamasını ayrı olarak Kullanıcılar ekranından yap.
           </p>
         </header>
 
@@ -427,40 +414,15 @@ const SettingsPage = () => {
               />
             </label>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex flex-col gap-2 text-xs font-semibold text-slate-500">
-                Yetkili Kullanıcı Adı
-                <input
-                  value={userEmail}
-                  onChange={(event) => setUserEmail(event.target.value)}
-                  placeholder="ornek@site.com"
-                  className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-3 text-sm text-slate-800 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                />
-              </label>
-              <label className="flex flex-col gap-2 text-xs font-semibold text-slate-500">
-                Yetkili Şifre
-                <input
-                  value={userPassword}
-                  onChange={(event) => setUserPassword(event.target.value)}
-                  placeholder="********"
-                  type="password"
-                  className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-3 text-sm text-slate-800 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                />
-              </label>
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              Kullanıcı oluşturma ve site atama artık yalnızca{" "}
+              <span className="font-semibold">Kullanıcılar</span> ekranından yapılır.
             </div>
 
             {normalizedDomain && (
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
                 Domain algılandı:{" "}
                 <span className="font-semibold">{normalizedDomain}</span>
-              </div>
-            )}
-
-            {createdUser && (
-              <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs text-sky-700">
-                Yetkili oluşturuldu:{" "}
-                <span className="font-semibold">{createdUser.email}</span> /{" "}
-                <span className="font-semibold">{createdUser.password}</span>
               </div>
             )}
 
@@ -475,7 +437,7 @@ const SettingsPage = () => {
               disabled={loading}
               className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 px-5 py-3 text-xs font-semibold uppercase tracking-widest text-white shadow-md shadow-purple-500/30 transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {loading ? "Kaydediliyor..." : "Snippet Üret"}
+              {loading ? "Kaydediliyor..." : "Site Oluştur"}
             </button>
           </div>
 
@@ -566,7 +528,7 @@ const SettingsPage = () => {
                       {site.name}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {site.allowedDomains.join(", ")}
+                      {site.siteUrl ?? site.allowedDomains.join(", ")}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 text-[11px]">
@@ -593,6 +555,12 @@ const SettingsPage = () => {
                   </div>
                 </div>
                 <div className="mt-3 grid gap-2 text-[11px] text-slate-500">
+                  {site.primaryDomain && (
+                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      Ana domain:{" "}
+                      <span className="font-semibold">{site.primaryDomain}</span>
+                    </div>
+                  )}
                   <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                     Website ID: <span className="font-semibold">{site.id}</span>
                   </div>
