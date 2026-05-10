@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 const sectionOptions = [
   { key: "home", label: "Anasayfa" },
+  { key: "telegram", label: "Telegram" },
   { key: "realtime", label: "Ziyaretçi (Anlık)" },
   { key: "daily", label: "Ziyaretçi (Günlük)" },
   { key: "settings", label: "Ayarlar" },

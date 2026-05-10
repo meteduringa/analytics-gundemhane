@@ -25,6 +25,8 @@ const adminOnlyItems = [
   { key: "users", label: "Kullanıcılar", href: "/panel/admin-kullanicilar" },
 ];
 
+const alwaysVisibleForCustomer = new Set(["home", "telegram"]);
+
 type LayoutProps = PropsWithChildren;
 
 const DashboardLayout = ({ children }: LayoutProps) => {
@@ -63,7 +65,11 @@ const DashboardLayout = ({ children }: LayoutProps) => {
       if (!panelSections || panelSections.length === 0) {
         return available.filter((item) => item.key !== "general");
       }
-      return available.filter((item) => panelSections.includes(item.key));
+      return available.filter(
+        (item) =>
+          alwaysVisibleForCustomer.has(item.key) ||
+          panelSections.includes(item.key)
+      );
     }
     return baseMenuItems;
   }, [panelSections, role]);
