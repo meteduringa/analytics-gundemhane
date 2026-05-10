@@ -2,6 +2,13 @@ import type { PanelAlertType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export type AlertPresetKey = "GOAL_TRACKING_18H";
+export type CustomerAlertShortcut = {
+  key: string;
+  aliases: string[];
+  ruleName: string;
+  label: string;
+  description: string;
+};
 
 type PresetRuleInput = {
   name: string;
@@ -77,6 +84,86 @@ const buildGoalTracking18hPreset = (): PresetRuleInput[] => [
     type: "CACHE_STALE",
     config: { maxAgeMinutes: 10 },
     cooldownSeconds: 600,
+  },
+];
+
+export const CUSTOMER_ALERT_SHORTCUTS: CustomerAlertShortcut[] = [
+  {
+    key: "23direct",
+    aliases: ["23direct", "23d"],
+    ruleName: "Preset • 23 Sonrası Direct Alt Hedef",
+    label: "23 Sonrası Direct Alt Hedef",
+    description: "23:00 sonrası direct tekil 1000 altıysa uyarır.",
+  },
+  {
+    key: "23tekil",
+    aliases: ["23tekil", "23unique"],
+    ruleName: "Preset • 23 Sonrası Tekil Alt Hedef",
+    label: "23 Sonrası Tekil Alt Hedef",
+    description: "23:00 sonrası toplam tekil 10000 altıysa uyarır.",
+  },
+  {
+    key: "23pv",
+    aliases: ["23pv", "23pageview"],
+    ruleName: "Preset • 23 Sonrası PV Alt Hedef",
+    label: "23 Sonrası PV Alt Hedef",
+    description: "23:00 sonrası pageview 30000 altıysa uyarır.",
+  },
+  {
+    key: "18direct",
+    aliases: ["18direct", "18d"],
+    ruleName: "Preset • 18 Sonrası Direct Kritik",
+    label: "18 Sonrası Direct Kritik",
+    description: "18:00 sonrası gün sonu direct projeksiyonu hedef altındaysa uyarır.",
+  },
+  {
+    key: "18tekil",
+    aliases: ["18tekil", "18unique"],
+    ruleName: "Preset • 18 Sonrası Tekil Kritik",
+    label: "18 Sonrası Tekil Kritik",
+    description: "18:00 sonrası tekil projeksiyonu hedef altındaysa uyarır.",
+  },
+  {
+    key: "18pv",
+    aliases: ["18pv", "18pageview"],
+    ruleName: "Preset • 18 Sonrası PV Kritik",
+    label: "18 Sonrası PV Kritik",
+    description: "18:00 sonrası pageview projeksiyonu hedef altındaysa uyarır.",
+  },
+  {
+    key: "directtempo",
+    aliases: ["directtempo", "dtempo"],
+    ruleName: "Preset • Direct Tempo Uyarı",
+    label: "Direct Tempo Uyarı",
+    description: "Gün içinde direct tempo gerideyse uyarır.",
+  },
+  {
+    key: "tekiltempo",
+    aliases: ["tekiltempo", "utempo"],
+    ruleName: "Preset • Tekil Tempo Uyarı",
+    label: "Tekil Tempo Uyarı",
+    description: "Gün içinde tekil tempo gerideyse uyarır.",
+  },
+  {
+    key: "pvtempo",
+    aliases: ["pvtempo", "pageviewtempo"],
+    ruleName: "Preset • PV Tempo Uyarı",
+    label: "PV Tempo Uyarı",
+    description: "Gün içinde pageview tempo gerideyse uyarır.",
+  },
+  {
+    key: "duraklama",
+    aliases: ["duraklama", "stagnation"],
+    ruleName: "Preset • Duraklama 10dk",
+    label: "Duraklama 10dk",
+    description: "Son 10 dakikada trafik akışı zayıflarsa uyarır.",
+  },
+  {
+    key: "cache",
+    aliases: ["cache", "cache10"],
+    ruleName: "Preset • Cache 10dk",
+    label: "Cache 10dk",
+    description: "Cache 10 dakikadan eskiyse uyarır.",
   },
 ];
 

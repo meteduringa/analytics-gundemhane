@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getTargetBoard, type TargetBoardRow } from "@/lib/panel-alerts";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { consumeTelegramLinkCode } from "@/lib/telegram-link";
+import {
+  CUSTOMER_ALERT_SHORTCUTS,
+  type CustomerAlertShortcut,
+} from "@/lib/alert-presets";
 
 export const runtime = "nodejs";
 
@@ -37,12 +41,17 @@ const buildHelpMessage = () =>
     "/rakam — Bugünkü rakamları gösterir",
     "/hedef — Bugünkü hedef durumunu gösterir",
     "/siteler — Yetkili olduğun siteleri listeler",
+    "/alarmlar — Alarm durumlarını gösterir",
+    "/alarmac ANAHTAR [site] — Alarmı açar",
+    "/alarmkapat ANAHTAR [site] — Alarmı kapatır",
+    "/testalarm — Test mesajı gönderir",
     "/baglan KOD — Telegram hesabını panel hesabına bağlar",
     "/baglantikes — Telegram hesabı bağlantısını kaldırır",
     "/yardim — Yardım metni",
     "",
     "Birden fazla siten varsa komuta site adı ekleyebilirsin.",
     "Örnek: /rakam haber expres",
+    "Örnek: /alarmac 23tekil",
   ].join("\n");
 
 const buildStatsLine = (row: TargetBoardRow) =>
@@ -67,6 +76,32 @@ const findMatchingRows = (rows: TargetBoardRow[], query: string) => {
   const normalizedQuery = normalize(query);
   return rows.filter((row) => normalize(row.websiteName).includes(normalizedQuery));
 };
+
+const resolveShortcut = (value: string) => {
+  const normalizedValue = normalize(value);
+  return (
+    CUSTOMER_ALERT_SHORTCUTS.find((item) =>
+      item.aliases.some((alias) => normalize(alias) === normalizedValue)
+    ) ?? null
+  );
+};
+
+const buildAlarmCatalogMessage = () =>
+  [
+    "Kullanılabilir alarm anahtarları:",
+    ...CUSTOMER_ALERT_SHORTCUTS.map(
+      (item) => `- ${item.key}: ${item.description}`
+    ),
+  ].join("\n");
+
+const buildRuleStatusLine = (
+  row: TargetBoardRow,
+  shortcut: CustomerAlertShortcut,
+  isActive: boolean
+) =>
+  `${row.websiteName} | ${shortcut.key} | ${shortcut.label} | ${
+    isActive ? "Açık" : "Kapalı"
+  }`;
 
 const getAuthorizedRows = async (chatId: string) => {
   const [linkedUser, siteLinkedRows] = await Promise.all([
@@ -112,6 +147,46 @@ const getAuthorizedRows = async (chatId: string) => {
 
   const board = await getTargetBoard(new Date());
   return board.filter((row) => websiteIds.includes(row.websiteId));
+};
+
+const getAuthorizedAlarmRules = async (websiteIds: string[]) => {
+  if (websiteIds.length === 0) return [];
+  return prisma.panelAlertRule.findMany({
+    where: { websiteId: { in: websiteIds } },
+    select: {
+      id: true,
+      name: true,
+      websiteId: true,
+      isActive: true,
+      website: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ website: { name: "asc" } }, { name: "asc" }],
+  });
+};
+
+const resolveSingleRowForToggle = (
+  rows: TargetBoardRow[],
+  siteQuery: string
+) => {
+  const matchingRows = siteQuery ? findMatchingRows(rows, siteQuery) : rows;
+  if (matchingRows.length === 0) {
+    return {
+      error: siteQuery ? `Eşleşen site bulunamadı: ${siteQuery}` : "Yetkili site bulunamadı.",
+      row: null,
+    };
+  }
+  if (matchingRows.length > 1) {
+    return {
+      error:
+        "Birden fazla site eşleşti. Komutu site adıyla tekrar yaz. Örnek: /alarmac 23tekil haber expres",
+      row: null,
+    };
+  }
+  return { error: null, row: matchingRows[0] };
 };
 
 const unlinkTelegramAccount = async (chatId: string) => {
@@ -246,6 +321,98 @@ export async function POST(request: Request) {
       await sendTelegramMessage({ chatId, text: message });
       break;
     }
+    case "/alarmlar": {
+      const rules = await getAuthorizedAlarmRules(rows.map((row) => row.websiteId));
+      const lines = rules
+        .map((rule) => {
+          const shortcut = CUSTOMER_ALERT_SHORTCUTS.find(
+            (item) => item.ruleName === rule.name
+          );
+          if (!shortcut) return null;
+          const row = rows.find((item) => item.websiteId === rule.websiteId);
+          if (!row) return null;
+          return buildRuleStatusLine(row, shortcut, rule.isActive);
+        })
+        .filter(Boolean) as string[];
+
+      const message =
+        lines.length > 0
+          ? ["Alarm durumları:", ...lines, "", buildAlarmCatalogMessage()].join("\n")
+          : `Bu hesaba tanımlı yönetilebilir alarm bulunamadı.\n\n${buildAlarmCatalogMessage()}`;
+
+      await sendTelegramMessage({ chatId, text: message });
+      break;
+    }
+    case "/alarmac":
+    case "/alarmkapat": {
+      const [shortcutInput, ...siteParts] = rest;
+      if (!shortcutInput) {
+        await sendTelegramMessage({
+          chatId,
+          text: `Kullanım:\n${command} ANAHTAR [site]\n\n${buildAlarmCatalogMessage()}`,
+        });
+        break;
+      }
+
+      const shortcut = resolveShortcut(shortcutInput);
+      if (!shortcut) {
+        await sendTelegramMessage({
+          chatId,
+          text: `Bilinmeyen alarm anahtarı: ${shortcutInput}\n\n${buildAlarmCatalogMessage()}`,
+        });
+        break;
+      }
+
+      const siteQuery = siteParts.join(" ").trim();
+      const { row, error } = resolveSingleRowForToggle(rows, siteQuery);
+      if (!row) {
+        await sendTelegramMessage({ chatId, text: error ?? "Site çözümlenemedi." });
+        break;
+      }
+
+      const rule = await prisma.panelAlertRule.findFirst({
+        where: {
+          websiteId: row.websiteId,
+          name: shortcut.ruleName,
+        },
+        select: {
+          id: true,
+          isActive: true,
+        },
+      });
+
+      if (!rule) {
+        await sendTelegramMessage({
+          chatId,
+          text: `${row.websiteName} için ${shortcut.key} alarmı tanımlı değil. Yönetici önce preset uygulamalı.`,
+        });
+        break;
+      }
+
+      const shouldActivate = command === "/alarmac";
+      if (rule.isActive === shouldActivate) {
+        await sendTelegramMessage({
+          chatId,
+          text: `${row.websiteName} için ${shortcut.key} alarmı zaten ${
+            shouldActivate ? "açık" : "kapalı"
+          }.`,
+        });
+        break;
+      }
+
+      await prisma.panelAlertRule.update({
+        where: { id: rule.id },
+        data: { isActive: shouldActivate },
+      });
+
+      await sendTelegramMessage({
+        chatId,
+        text: `${row.websiteName} için ${shortcut.key} alarmı ${
+          shouldActivate ? "açıldı" : "kapatıldı"
+        }.`,
+      });
+      break;
+    }
     case "/rakam": {
       const message = [
         "Bugünkü rakamlar:",
@@ -260,6 +427,19 @@ export async function POST(request: Request) {
         ...matchingRows.map((row) => buildTargetLine(row)),
       ].join("\n");
       await sendTelegramMessage({ chatId, text: message });
+      break;
+    }
+    case "/testalarm": {
+      const firstRow = rows[0];
+      const text = firstRow
+        ? [
+            "[TEST] Telegram alarm hattı çalışıyor",
+            `Site: ${firstRow.websiteName}`,
+            `Saat: ${formatIstanbulDateTime(new Date().toISOString())}`,
+            "Bu bir test mesajıdır.",
+          ].join("\n")
+        : "[TEST] Telegram alarm hattı çalışıyor";
+      await sendTelegramMessage({ chatId, text });
       break;
     }
     default: {
