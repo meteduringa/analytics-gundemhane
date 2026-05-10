@@ -81,3 +81,25 @@ CREATE INDEX IF NOT EXISTS "panel_alert_events_alertRuleId_triggeredAt_idx"
 
 CREATE INDEX IF NOT EXISTS "panel_alert_events_websiteId_triggeredAt_idx"
   ON "panel_alert_events" ("websiteId", "triggeredAt");
+
+CREATE TABLE IF NOT EXISTS "telegram_link_tokens" (
+  "id" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "codeHash" TEXT NOT NULL,
+  "expiresAt" TIMESTAMP(3) NOT NULL,
+  "consumedAt" TIMESTAMP(3),
+  "consumedChatId" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "telegram_link_tokens_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "telegram_link_tokens_userId_fkey"
+    FOREIGN KEY ("userId")
+    REFERENCES "User"("id")
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "telegram_link_tokens_codeHash_key"
+  ON "telegram_link_tokens" ("codeHash");
+
+CREATE INDEX IF NOT EXISTS "telegram_link_tokens_userId_expiresAt_idx"
+  ON "telegram_link_tokens" ("userId", "expiresAt");

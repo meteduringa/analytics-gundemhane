@@ -52,6 +52,7 @@ model User {
     createdAt    DateTime             @default(now())
     updatedAt    DateTime             @updatedAt
     userWebsites AnalyticsUserWebsite[]
+    telegramLinkTokens TelegramLinkToken[]
   }
 
 model AnalyticsWebsite {
@@ -209,6 +210,20 @@ model PanelAlertEvent {
   @@index([alertRuleId, triggeredAt])
   @@index([websiteId, triggeredAt])
   @@map("panel_alert_events")
+}
+
+model TelegramLinkToken {
+  id            String   @id @default(uuid())
+  userId        String
+  codeHash      String   @unique
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  consumedChatId String?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("telegram_link_tokens")
 }
 
 model BIKConfig {

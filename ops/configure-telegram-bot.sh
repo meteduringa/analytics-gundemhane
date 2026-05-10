@@ -24,6 +24,7 @@ curl -fsS "https://api.telegram.org/bot${TOKEN}/setMyCommands" \
       { "command": "rakam", "description": "Bugünkü rakamları göster" },
       { "command": "hedef", "description": "Bugünkü hedef durumunu göster" },
       { "command": "siteler", "description": "Yetkili siteleri listele" },
+      { "command": "baglan", "description": "Panel hesabını Telegram'a bağla" },
       { "command": "yardim", "description": "Komut yardımını göster" }
     ]
   }'

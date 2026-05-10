@@ -12,6 +12,12 @@ type Site = {
   telegramChatId?: string | null;
 };
 
+type PresetOption = {
+  key: string;
+  label: string;
+  description: string;
+};
+
 type AlertType =
   | "TARGET_PACE_BELOW"
   | "PROJECTED_MISS"
@@ -125,10 +131,12 @@ export default function AlarmCenterPage() {
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [statuses, setStatuses] = useState<Record<string, AlertStatus>>({});
   const [events, setEvents] = useState<AlertEvent[]>([]);
+  const [presets, setPresets] = useState<PresetOption[]>([]);
   const [dateInput, setDateInput] = useState(() => formatDateInput(new Date()));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
+  const [applyingPreset, setApplyingPreset] = useState(false);
 
   const [form, setForm] = useState<{
     websiteId: string;
@@ -146,6 +154,10 @@ export default function AlarmCenterPage() {
     telegramChatId: "",
     cooldownSeconds: "900",
     config: defaultConfigForType("TARGET_PACE_BELOW"),
+  });
+  const [presetForm, setPresetForm] = useState({
+    websiteId: "",
+    presetKey: "GOAL_TRACKING_18H",
   });
 
   useEffect(() => {
@@ -169,31 +181,35 @@ export default function AlarmCenterPage() {
     setLoading(true);
     setError("");
     try {
-      const [sitesRes, rulesRes, statusesRes, eventsRes] = await Promise.all([
+      const [sitesRes, rulesRes, statusesRes, eventsRes, presetsRes] = await Promise.all([
         fetch("/api/panel/sites"),
         fetch("/api/panel/alert-rules"),
         fetch(`/api/panel/alert-status?date=${dateInput}`),
         fetch("/api/panel/alert-events"),
+        fetch("/api/panel/alert-presets"),
       ]);
-      const [sitesPayload, rulesPayload, statusesPayload, eventsPayload] =
+      const [sitesPayload, rulesPayload, statusesPayload, eventsPayload, presetsPayload] =
         await Promise.all([
           sitesRes.json(),
           rulesRes.json(),
           statusesRes.json(),
           eventsRes.json(),
+          presetsRes.json(),
         ]);
-      if (!sitesRes.ok || !rulesRes.ok || !statusesRes.ok || !eventsRes.ok) {
+      if (!sitesRes.ok || !rulesRes.ok || !statusesRes.ok || !eventsRes.ok || !presetsRes.ok) {
         throw new Error(
           sitesPayload.error ||
             rulesPayload.error ||
             statusesPayload.error ||
             eventsPayload.error ||
+            presetsPayload.error ||
             "Alarm verileri alınamadı."
         );
       }
 
       const nextSites = (sitesPayload.sites ?? []) as Site[];
       setSites(nextSites);
+      setPresets((presetsPayload.presets ?? []) as PresetOption[]);
       setRules((rulesPayload.rules ?? []) as AlertRule[]);
       setStatuses(
         ((statusesPayload.statuses ?? []) as AlertStatus[]).reduce<
@@ -207,6 +223,9 @@ export default function AlarmCenterPage() {
 
       if (!form.websiteId && nextSites.length > 0) {
         setForm((prev) => ({ ...prev, websiteId: nextSites[0].id }));
+      }
+      if (!presetForm.websiteId && nextSites.length > 0) {
+        setPresetForm((prev) => ({ ...prev, websiteId: nextSites[0].id }));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Alarm verileri alınamadı.");
@@ -287,6 +306,27 @@ export default function AlarmCenterPage() {
     }
   };
 
+  const applyPreset = async () => {
+    setApplyingPreset(true);
+    setError("");
+    try {
+      const response = await fetch("/api/panel/alert-presets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(presetForm),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Preset uygulanamadı.");
+      }
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preset uygulanamadı.");
+    } finally {
+      setApplyingPreset(false);
+    }
+  };
+
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === form.websiteId) ?? null,
     [form.websiteId, sites]
@@ -355,6 +395,60 @@ export default function AlarmCenterPage() {
             {error}
           </div>
         ) : null}
+
+        <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
+          <h2 className="text-lg font-semibold text-slate-900">Preset Uygula</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Tek tıkla standart alarm seti oluşturur. Aynı isimli kurallar varsa tekrar eklemez.
+          </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <label className="text-xs font-semibold text-slate-500">
+              Site
+              <select
+                value={presetForm.websiteId}
+                onChange={(event) =>
+                  setPresetForm((prev) => ({ ...prev, websiteId: event.target.value }))
+                }
+                className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="">Seçiniz</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-slate-500 md:col-span-2">
+              Preset
+              <select
+                value={presetForm.presetKey}
+                onChange={(event) =>
+                  setPresetForm((prev) => ({ ...prev, presetKey: event.target.value }))
+                }
+                className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              >
+                {presets.map((preset) => (
+                  <option key={preset.key} value={preset.key}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {presets.find((item) => item.key === presetForm.presetKey)?.description ? (
+            <p className="mt-3 text-sm text-slate-500">
+              {presets.find((item) => item.key === presetForm.presetKey)?.description}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void applyPreset()}
+            className="mt-5 rounded-2xl bg-slate-900 px-6 py-2 text-sm font-semibold text-white"
+          >
+            {applyingPreset ? "Preset uygulanıyor..." : "Preset Uygula"}
+          </button>
+        </section>
 
         <section className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-sm shadow-slate-900/5">
           <h2 className="text-lg font-semibold text-slate-900">Yeni Alarm</h2>

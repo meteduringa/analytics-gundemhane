@@ -7,6 +7,7 @@ import { PropsWithChildren, useEffect, useMemo, useState } from "react";
 
 const baseMenuItems = [
   { key: "home", label: "Ön Dashboard", href: "/panel" },
+  { key: "telegram", label: "Telegram", href: "/panel/telegram" },
   { key: "settings", label: "Ayarlar", href: "/panel/ayarlar" },
 ];
 

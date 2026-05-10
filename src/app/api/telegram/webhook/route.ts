@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTargetBoard, type TargetBoardRow } from "@/lib/panel-alerts";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { consumeTelegramLinkCode } from "@/lib/telegram-link";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,7 @@ const buildHelpMessage = () =>
     "/rakam — Bugünkü rakamları gösterir",
     "/hedef — Bugünkü hedef durumunu gösterir",
     "/siteler — Yetkili olduğun siteleri listeler",
+    "/baglan KOD — Telegram hesabını panel hesabına bağlar",
     "/yardim — Yardım metni",
     "",
     "Birden fazla siten varsa komuta site adı ekleyebilirsin.",
@@ -135,18 +137,49 @@ export async function POST(request: Request) {
   const chatId = String(rawChatId);
   const rows = await getAuthorizedRows(chatId);
 
+  const [rawCommand, ...rest] = text.split(/\s+/);
+  const command = rawCommand.split("@")[0].toLocaleLowerCase("tr-TR");
+  const query = rest.join(" ").trim();
+
+  if (command === "/baglan") {
+    if (!query) {
+      await sendTelegramMessage({
+        chatId,
+        text:
+          "Önce panelden Telegram bağlantı kodu üret. Sonra bota şu formatta yaz:\n/baglan KOD",
+      });
+      return NextResponse.json({ ok: true, authorized: false, binding: "missing_code" });
+    }
+
+    const result = await consumeTelegramLinkCode(query, chatId);
+    if (!result.ok) {
+      const textByReason: Record<string, string> = {
+        missing: "Bağlantı kodu eksik. Kullanım: /baglan KOD",
+        invalid: "Bağlantı kodu geçersiz veya süresi dolmuş.",
+        chat_in_use: "Bu Telegram hesabı başka bir kullanıcıya bağlı.",
+      };
+      await sendTelegramMessage({
+        chatId,
+        text: textByReason[result.reason] ?? "Bağlantı kurulamadı.",
+      });
+      return NextResponse.json({ ok: true, authorized: false, binding: result.reason });
+    }
+
+    await sendTelegramMessage({
+      chatId,
+      text: `Bağlantı tamamlandı. Hesap: ${result.username}\nArtık /rakam ve /hedef komutlarını kullanabilirsin.`,
+    });
+    return NextResponse.json({ ok: true, authorized: true, binding: "linked" });
+  }
+
   if (rows.length === 0) {
     await sendTelegramMessage({
       chatId,
       text:
-        `Bu sohbet henüz bir kullanıcı veya site ile eşleştirilmemiş.\n\nChat ID: ${chatId}\n\nBu değeri admin panelindeki kullanıcı veya hedef ekranına tanımlaman gerekiyor.`,
+        `Bu sohbet henüz bir kullanıcı veya site ile eşleştirilmemiş.\n\nChat ID: ${chatId}\n\nPanelden bağlantı kodu üretip şu komutu kullan:\n/baglan KOD`,
     });
     return NextResponse.json({ ok: true, authorized: false });
   }
-
-  const [rawCommand, ...rest] = text.split(/\s+/);
-  const command = rawCommand.split("@")[0].toLocaleLowerCase("tr-TR");
-  const query = rest.join(" ").trim();
   const matchingRows = query ? findMatchingRows(rows, query) : rows;
 
   if (query && matchingRows.length === 0) {
