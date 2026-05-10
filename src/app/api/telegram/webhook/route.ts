@@ -38,6 +38,7 @@ const buildHelpMessage = () =>
     "/hedef — Bugünkü hedef durumunu gösterir",
     "/siteler — Yetkili olduğun siteleri listeler",
     "/baglan KOD — Telegram hesabını panel hesabına bağlar",
+    "/baglantikes — Telegram hesabı bağlantısını kaldırır",
     "/yardim — Yardım metni",
     "",
     "Birden fazla siten varsa komuta site adı ekleyebilirsin.",
@@ -113,6 +114,29 @@ const getAuthorizedRows = async (chatId: string) => {
   return board.filter((row) => websiteIds.includes(row.websiteId));
 };
 
+const unlinkTelegramAccount = async (chatId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { telegramChatId: chatId },
+    select: { id: true, email: true },
+  });
+
+  if (!user) {
+    return null;
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: user.id },
+      data: { telegramChatId: null },
+    }),
+    prisma.telegramLinkToken.deleteMany({
+      where: { userId: user.id, consumedAt: null },
+    }),
+  ]);
+
+  return user;
+};
+
 const ensureWebhookSecret = (request: Request) => {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret) return true;
@@ -170,6 +194,23 @@ export async function POST(request: Request) {
       text: `Bağlantı tamamlandı. Hesap: ${result.username}\nArtık /rakam ve /hedef komutlarını kullanabilirsin.`,
     });
     return NextResponse.json({ ok: true, authorized: true, binding: "linked" });
+  }
+
+  if (command === "/baglantikes") {
+    const unlinkedUser = await unlinkTelegramAccount(chatId);
+    if (!unlinkedUser) {
+      await sendTelegramMessage({
+        chatId,
+        text: "Bu Telegram hesabı şu anda bir panel kullanıcısına bağlı değil.",
+      });
+      return NextResponse.json({ ok: true, authorized: false, binding: "not_linked" });
+    }
+
+    await sendTelegramMessage({
+      chatId,
+      text: `Bağlantı kaldırıldı.\nHesap: ${unlinkedUser.email}\nTekrar bağlamak için panelden yeni kod üretip /baglan KOD kullan.`,
+    });
+    return NextResponse.json({ ok: true, authorized: false, binding: "unlinked" });
   }
 
   if (rows.length === 0) {

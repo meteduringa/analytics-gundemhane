@@ -209,6 +209,12 @@ export default function TelegramPage() {
               </div>
             </li>
             <li>Bağlantı tamamlandıktan sonra /rakam ve /hedef komutlarını kullan.</li>
+            <li>
+              Telegram üzerinden bağlantıyı kaldırmak istersen:
+              <div className="mt-2 rounded-2xl bg-slate-900 px-4 py-3 font-mono text-sm text-white">
+                /baglantikes
+              </div>
+            </li>
           </ol>
         </section>
 
