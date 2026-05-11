@@ -102,6 +102,26 @@ const DashboardLayout = ({ children }: LayoutProps) => {
             </button>
           </div>
         </div>
+        <div className="border-b border-slate-200/70 bg-white/95 px-4 py-3 shadow-sm backdrop-blur lg:hidden">
+          <nav className="flex gap-2 overflow-x-auto pb-1">
+            {menuItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  href={item.href}
+                  key={`mobile-${item.label}`}
+                  className={`whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    isActive
+                      ? "border-purple-200 bg-purple-50 text-purple-700"
+                      : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </div>
 
       <div className="lg:grid lg:min-h-[calc(100vh-72px)] lg:grid-cols-[260px_1fr]">
