@@ -23,6 +23,14 @@ const applyNoStoreHeaders = (response: NextResponse) => {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname === "/panel" || pathname.startsWith("/panel/")) {
+    const panelSession = request.cookies.get("panel_session")?.value;
+    if (!panelSession) {
+      const loginUrl = new URL("/login", request.url);
+      return applyNoStoreHeaders(NextResponse.redirect(loginUrl));
+    }
+  }
+
   const shouldDisableCache = noStorePrefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );

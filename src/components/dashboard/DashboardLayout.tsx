@@ -3,7 +3,8 @@
 import { Diamond, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PropsWithChildren, useEffect, useMemo, useState } from "react";
+import { PropsWithChildren, useMemo } from "react";
+import { usePanelSession } from "@/hooks/usePanelSession";
 
 const baseMenuItems = [
   { key: "home", label: "Ön Dashboard", href: "/panel" },
@@ -31,30 +32,11 @@ type LayoutProps = PropsWithChildren;
 
 const DashboardLayout = ({ children }: LayoutProps) => {
   const pathname = usePathname();
-  const [role, setRole] = useState<"ADMIN" | "CUSTOMER" | null>(null);
-  const [panelSections, setPanelSections] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const rawUser = window.localStorage.getItem("user");
-    if (!rawUser) {
-      setRole(null);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(rawUser) as {
-        role?: "ADMIN" | "CUSTOMER";
-        panelSections?: string[];
-      };
-      setRole(parsed.role ?? null);
-      setPanelSections(
-        Array.isArray(parsed.panelSections) ? parsed.panelSections : null
-      );
-    } catch {
-      setRole(null);
-      setPanelSections(null);
-    }
-  }, []);
+  const { user, forceLogout } = usePanelSession();
+  const role = user?.role ?? null;
+  const panelSections = Array.isArray(user?.panelSections)
+    ? user.panelSections
+    : null;
 
   const menuItems = useMemo(() => {
     if (role === "ADMIN") {
@@ -92,9 +74,7 @@ const DashboardLayout = ({ children }: LayoutProps) => {
                 try {
                   await fetch("/api/panel/logout", { method: "POST" });
                 } catch {}
-                window.localStorage.removeItem("auth");
-                window.localStorage.removeItem("user");
-                window.location.href = "/login";
+                forceLogout();
               }}
             >
               <LogOut className="h-4 w-4" />

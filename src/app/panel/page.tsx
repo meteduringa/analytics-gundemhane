@@ -4,8 +4,8 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import FiltersBar from "@/components/dashboard/FiltersBar";
 import StatsCard from "@/components/dashboard/StatsCard";
 import { formatDuration } from "@/lib/formatDuration";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePanelSession } from "@/hooks/usePanelSession";
 
 type MetricsSnapshot = {
   daily_unique_users: number;
@@ -55,7 +55,6 @@ const formatIstanbulDate = (value: string | null | undefined) => {
 };
 
 const PanelPage = () => {
-  const router = useRouter();
   const [dateInput, setDateInput] = useState(() =>
     formatDateInput(new Date())
   );
@@ -63,13 +62,7 @@ const PanelPage = () => {
     formatDateInput(new Date())
   );
   const [viewMode, setViewMode] = useState<"daily" | "live">("daily");
-  const [ready, setReady] = useState(false);
-  const [user, setUser] = useState<{
-    id: string;
-    email: string;
-    name?: string | null;
-    role: "ADMIN" | "CUSTOMER";
-  } | null>(null);
+  const { user, ready, forceLogout } = usePanelSession();
   const [sites, setSites] = useState<
     { id: string; name: string; allowedDomains: string[] }[]
   >([]);
@@ -132,6 +125,10 @@ const PanelPage = () => {
         : null;
 
       const response = await metricsPromise;
+      if (response.status === 401) {
+        forceLogout();
+        return null;
+      }
       const payload = await response.json();
       if (response.ok && seq === refreshSeq.current) {
         setMetrics(payload);
@@ -141,6 +138,10 @@ const PanelPage = () => {
 
       if (topPagesPromise) {
         const topPagesResponse = await topPagesPromise;
+        if (topPagesResponse.status === 401) {
+          forceLogout();
+          return nextMetrics;
+        }
         const topPagesPayload = await topPagesResponse.json();
         if (topPagesResponse.ok && seq === refreshSeq.current) {
           setTopPages(topPagesPayload.pages ?? []);
@@ -160,32 +161,16 @@ const PanelPage = () => {
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const isAuthorized = window.localStorage.getItem("auth") === "1";
-    if (!isAuthorized) {
-      router.replace("/login");
-      return;
-    }
-    const rawUser = window.localStorage.getItem("user");
-    if (!rawUser) {
-      router.replace("/login");
-      return;
-    }
-    setUser(JSON.parse(rawUser));
-    const frame = window.requestAnimationFrame(() => {
-      setReady(true);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [router]);
-
-  useEffect(() => {
     const loadSites = async () => {
       if (!user) return;
-      const params = new URLSearchParams({
-        userId: user.id,
-        role: user.role,
+      const response = await fetch("/api/panel/sites", {
+        cache: "no-store",
+        credentials: "same-origin",
       });
-      const response = await fetch(`/api/panel/sites?${params.toString()}`);
+      if (response.status === 401) {
+        forceLogout();
+        return;
+      }
       const payload = await response.json();
       if (response.ok) {
         setSites(payload.sites ?? []);
@@ -194,8 +179,8 @@ const PanelPage = () => {
         }
       }
     };
-    loadSites();
-  }, [user]);
+    void loadSites();
+  }, [forceLogout, selectedSiteId, user]);
 
   useEffect(() => {
     refreshAll(selectedSiteId, selectedDate, { includeTopPages: false });
