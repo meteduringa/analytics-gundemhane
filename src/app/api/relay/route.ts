@@ -29,8 +29,13 @@ export async function GET(request: Request) {
     );
   }
 
-  target.searchParams.delete("pc_source");
-  target.searchParams.delete("pc_cat");
+  target.searchParams.set("pc_source", "popcent");
+  if (category) {
+    target.searchParams.set("pc_cat", category);
+  } else {
+    target.searchParams.delete("pc_cat");
+  }
+
   const token = encodePcToken("popcent", category);
   const hashParams = new URLSearchParams(target.hash.replace(/^#/, ""));
   hashParams.set("pc", token);
