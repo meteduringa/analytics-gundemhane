@@ -93,6 +93,8 @@ export async function GET(request: Request) {
   const endValue = searchParams.get("end");
   const landingUrlRaw = searchParams.get("landingUrl");
   const popcentOnly = searchParams.get("popcentOnly") !== "0";
+  const pcCat = searchParams.get("pcCat")?.trim() || null;
+  const pcSource = searchParams.get("pcSource")?.trim() || null;
 
   if (!websiteId) {
     return NextResponse.json(
@@ -148,6 +150,12 @@ export async function GET(request: Request) {
         (COALESCE(NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), ''), '') IN (${popcentHostList}))
       )
     `);
+  }
+  if (pcCat) {
+    conditions.push(Prisma.sql`e."eventData"->>'pc_cat' = ${pcCat}`);
+  }
+  if (pcSource) {
+    conditions.push(Prisma.sql`e."eventData"->>'pc_source' = ${pcSource}`);
   }
 
   if (startDate) {
@@ -344,5 +352,7 @@ export async function GET(request: Request) {
     summary,
     thresholds: ["lt1", "lt3", "ge5", "ge10"],
     popcentOnly,
+    pcCat,
+    pcSource,
   });
 }

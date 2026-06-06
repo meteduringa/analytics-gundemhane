@@ -88,6 +88,14 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
     if (!value) return { pc_source: null, pc_cat: null };
     try {
       const parsed = new URL(value, "https://example.com");
+      const clickaduCode = parsed.searchParams.get("c");
+      if (clickaduCode) {
+        return { pc_source: "clickadu", pc_cat: clickaduCode };
+      }
+      const popcentCode = parsed.searchParams.get("p");
+      if (popcentCode) {
+        return { pc_source: "popcent", pc_cat: popcentCode };
+      }
       return {
         pc_source: parsed.searchParams.get("pc_source"),
         pc_cat: parsed.searchParams.get("pc_cat"),

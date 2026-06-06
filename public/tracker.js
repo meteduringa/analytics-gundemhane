@@ -161,6 +161,14 @@
 
     const readPcMetaFromQuery = () => {
       const params = new URLSearchParams(location.search);
+      const clickaduCode = params.get("c");
+      if (clickaduCode) {
+        return { pc_source: "clickadu", pc_cat: clickaduCode };
+      }
+      const popcentCode = params.get("p");
+      if (popcentCode) {
+        return { pc_source: "popcent", pc_cat: popcentCode };
+      }
       const pcSource = params.get("pc_source");
       if (!pcSource) return null;
       return {
