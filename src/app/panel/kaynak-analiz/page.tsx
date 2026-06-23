@@ -437,41 +437,39 @@ export default function SourceAnalysisPage() {
 
       const results: Record<string, LandingResult> = {};
 
-      await Promise.all(
-        itemsToAnalyze.map(async (item) => {
-          const params = new URLSearchParams({
-            websiteId: selectedSiteId,
-            start: startDate,
-            end: endDate,
-            landingUrl: item.normalizedUrl,
-            popcentOnly: popcentOnly ? "1" : "0",
-          });
+      for (const item of itemsToAnalyze) {
+        const params = new URLSearchParams({
+          websiteId: selectedSiteId,
+          start: startDate,
+          end: endDate,
+          landingUrl: item.normalizedUrl,
+          popcentOnly: popcentOnly ? "1" : "0",
+        });
 
-          const [sourceResponse, breakdownResponse] = await Promise.all([
-            fetch(`/api/panel/source-analysis?${params.toString()}`),
-            fetch(`/api/panel/source-breakdown?${params.toString()}`),
-          ]);
+        const [sourceResponse, breakdownResponse] = await Promise.all([
+          fetch(`/api/panel/source-analysis?${params.toString()}`),
+          fetch(`/api/panel/source-breakdown?${params.toString()}`),
+        ]);
 
-          const payload = await sourceResponse.json();
-          const breakdownPayload = await breakdownResponse.json();
+        const payload = await sourceResponse.json();
+        const breakdownPayload = await breakdownResponse.json();
 
-          if (!sourceResponse.ok) {
-            throw new Error(normalizeApiError(payload?.error));
-          }
-          if (!breakdownResponse.ok) {
-            throw new Error(normalizeApiError(breakdownPayload?.error));
-          }
+        if (!sourceResponse.ok) {
+          throw new Error(normalizeApiError(payload?.error));
+        }
+        if (!breakdownResponse.ok) {
+          throw new Error(normalizeApiError(breakdownPayload?.error));
+        }
 
-          results[item.id] = {
-            sources: payload.sources ?? [],
-            summary: payload.summary ?? null,
-            device: breakdownPayload.device ?? [],
-            browser: breakdownPayload.browser ?? [],
-            combos: breakdownPayload.combos ?? [],
-            network: breakdownPayload.network ?? [],
-          };
-        })
-      );
+        results[item.id] = {
+          sources: payload.sources ?? [],
+          summary: payload.summary ?? null,
+          device: breakdownPayload.device ?? [],
+          browser: breakdownPayload.browser ?? [],
+          combos: breakdownPayload.combos ?? [],
+          network: breakdownPayload.network ?? [],
+        };
+      }
 
       if (analysisRequestRef.current === requestId) {
         setLandingResults(results);

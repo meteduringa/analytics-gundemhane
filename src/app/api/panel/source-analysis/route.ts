@@ -56,6 +56,7 @@ const normalizeLandingUrl = (value: string | null) => {
 
 type SourceRow = {
   source_website_id: string;
+  total_pageviews: bigint;
   total_sessions: bigint;
   total_visitors: bigint;
   lt1_sessions: bigint;
@@ -69,6 +70,7 @@ type SourceRow = {
 };
 
 type SummaryRow = {
+  total_pageviews: bigint;
   total_sessions: bigint;
   total_visitors: bigint;
   lt1_sessions: bigint;
@@ -173,8 +175,8 @@ export async function GET(request: Request) {
   const whereClause = Prisma.join(conditions, " AND ");
 
   const rows = (await prisma.$queryRaw`
-    WITH matched AS (
-      SELECT DISTINCT
+    WITH events AS (
+      SELECT
         e."sessionId" AS "sessionId",
         e."visitorId" AS "visitorId",
         (e."eventData"->>'source_website_id') AS source_website_id,
@@ -200,6 +202,21 @@ export async function GET(request: Request) {
       FROM "analytics_events" e
       WHERE ${whereClause}
     ),
+    matched AS (
+      SELECT DISTINCT
+        "sessionId",
+        "visitorId",
+        source_website_id,
+        referrer_host
+      FROM events
+    ),
+    pageviews AS (
+      SELECT
+        COALESCE(source_website_id, referrer_host, '[DIRECT]') AS source_website_id,
+        COUNT(*) AS total_pageviews
+      FROM events
+      GROUP BY COALESCE(source_website_id, referrer_host, '[DIRECT]')
+    ),
     durations AS (
       SELECT
         COALESCE(m.source_website_id, m.referrer_host, '[DIRECT]') AS source_website_id,
@@ -213,32 +230,55 @@ export async function GET(request: Request) {
       JOIN "analytics_sessions" s
         ON s."websiteId" = ${websiteId}
        AND s."sessionId" = m."sessionId"
+    ),
+    grouped AS (
+      SELECT
+        source_website_id,
+        COUNT(*) AS total_sessions,
+        COUNT(DISTINCT "visitorId") AS total_visitors,
+        SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+        SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+        SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+        SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions,
+        COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS lt1_visitors,
+        COUNT(DISTINCT CASE WHEN duration_seconds < 3 THEN "visitorId" END) AS lt3_visitors,
+        COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS ge5_visitors,
+        COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS ge10_visitors
+      FROM durations
+      GROUP BY source_website_id
     )
     SELECT
-      source_website_id,
-      COUNT(*) AS total_sessions,
-      COUNT(DISTINCT "visitorId") AS total_visitors,
-      SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
-      SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
-      SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
-      SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions,
-      COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS lt1_visitors,
-      COUNT(DISTINCT CASE WHEN duration_seconds < 3 THEN "visitorId" END) AS lt3_visitors,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS ge5_visitors,
-      COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS ge10_visitors
-    FROM durations
-    GROUP BY source_website_id
-    ORDER BY ge5_sessions DESC
+      g.source_website_id,
+      COALESCE(p.total_pageviews, 0) AS total_pageviews,
+      g.total_sessions,
+      g.total_visitors,
+      g.lt1_sessions,
+      g.lt3_sessions,
+      g.ge5_sessions,
+      g.ge10_sessions,
+      g.lt1_visitors,
+      g.lt3_visitors,
+      g.ge5_visitors,
+      g.ge10_visitors
+    FROM grouped g
+    LEFT JOIN pageviews p ON p.source_website_id = g.source_website_id
+    ORDER BY g.ge5_sessions DESC
     LIMIT 200
   `) as SourceRow[];
 
   const summaryRows = (await prisma.$queryRaw`
-    WITH matched AS (
-      SELECT DISTINCT
+    WITH events AS (
+      SELECT
         e."sessionId" AS "sessionId",
         e."visitorId" AS "visitorId"
       FROM "analytics_events" e
       WHERE ${whereClause}
+    ),
+    matched AS (
+      SELECT DISTINCT
+        "sessionId",
+        "visitorId"
+      FROM events
     ),
     durations AS (
       SELECT
@@ -254,6 +294,7 @@ export async function GET(request: Request) {
        AND s."sessionId" = m."sessionId"
     )
     SELECT
+      (SELECT COUNT(*) FROM events) AS total_pageviews,
       COUNT(*) AS total_sessions,
       COUNT(DISTINCT "visitorId") AS total_visitors,
       SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
@@ -272,6 +313,7 @@ export async function GET(request: Request) {
     ? {
         totalSessions: Number(summaryRow.total_sessions ?? 0),
         totalVisitors: Number(summaryRow.total_visitors ?? 0),
+        totalPageviews: Number(summaryRow.total_pageviews ?? 0),
         longSessions: {
           lt1: Number(summaryRow.lt1_sessions ?? 0),
           lt3: Number(summaryRow.lt3_sessions ?? 0),
@@ -320,6 +362,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     sources: rows.map((row) => ({
       sourceWebsiteId: row.source_website_id,
+      totalPageviews: Number(row.total_pageviews ?? 0),
       totalSessions: Number(row.total_sessions ?? 0),
       totalVisitors: Number(row.total_visitors ?? 0),
       longSessions: {

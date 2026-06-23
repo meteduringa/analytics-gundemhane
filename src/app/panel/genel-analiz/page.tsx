@@ -27,6 +27,16 @@ type SourceSet = {
 type Summary = {
   totalPageviews: number;
   uniqueVisitors: number;
+  trackedReads: number;
+  untrackedPageviews: number;
+  avgReadSeconds: number;
+  avgTrackedReadSeconds: number;
+  readBuckets: {
+    lt3: number;
+    ge10: number;
+    ge30: number;
+    ge50: number;
+  };
   sources: SourceSet;
 };
 
@@ -37,6 +47,16 @@ type Row = {
   websiteName: string;
   totalPageviews: number;
   uniqueVisitors: number;
+  trackedReads: number;
+  untrackedPageviews: number;
+  avgReadSeconds: number;
+  avgTrackedReadSeconds: number;
+  readBuckets: {
+    lt3: number;
+    ge10: number;
+    ge30: number;
+    ge50: number;
+  };
   sources: SourceSet;
 };
 
@@ -76,6 +96,19 @@ const sourceCards: { key: keyof SourceSet; label: string }[] = [
   { key: "other", label: "Other" },
 ];
 
+type SortMode = "drag" | "lowDuration" | "volume";
+
+const formatSeconds = (seconds: number) => {
+  const safeSeconds = Math.max(0, Math.round(seconds || 0));
+  if (safeSeconds < 60) return `${safeSeconds} sn`;
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${minutes} dk ${remainder} sn`;
+};
+
+const formatPercent = (value: number) =>
+  `${Math.round(Math.max(0, value) * 100)}%`;
+
 export default function GeneralAnalysisPage() {
   const router = useRouter();
   const storageKey = "general_analysis_state_v2";
@@ -93,6 +126,7 @@ export default function GeneralAnalysisPage() {
   );
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [onlyArticles, setOnlyArticles] = useState(true);
+  const [sortMode, setSortMode] = useState<SortMode>("drag");
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -102,6 +136,33 @@ export default function GeneralAnalysisPage() {
     () => sites.find((site) => site.id === selectedSiteId) ?? null,
     [selectedSiteId, sites]
   );
+  const sortedRows = useMemo(() => {
+    const withScores = rows.map((row) => {
+      const shortReads = row.untrackedPageviews + row.readBuckets.lt3;
+      const durationDragScore =
+        Math.max(0, 50 - row.avgReadSeconds) * row.totalPageviews;
+      return { row, shortReads, durationDragScore };
+    });
+
+    return withScores
+      .sort((left, right) => {
+        if (sortMode === "volume") {
+          return right.row.totalPageviews - left.row.totalPageviews;
+        }
+        if (sortMode === "lowDuration") {
+          return (
+            left.row.avgReadSeconds - right.row.avgReadSeconds ||
+            right.row.totalPageviews - left.row.totalPageviews
+          );
+        }
+        return (
+          right.durationDragScore - left.durationDragScore ||
+          right.shortReads - left.shortReads ||
+          right.row.totalPageviews - left.row.totalPageviews
+        );
+      })
+      .map(({ row }) => row);
+  }, [rows, sortMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -145,6 +206,7 @@ export default function GeneralAnalysisPage() {
           endDate?: string;
           selectedSiteId?: string;
           onlyArticles?: boolean;
+          sortMode?: SortMode;
         };
         if (saved.startDate) {
           const normalized = normalizeDateInput(saved.startDate);
@@ -159,6 +221,13 @@ export default function GeneralAnalysisPage() {
         }
         if (typeof saved.onlyArticles === "boolean") {
           setOnlyArticles(saved.onlyArticles);
+        }
+        if (
+          saved.sortMode === "drag" ||
+          saved.sortMode === "lowDuration" ||
+          saved.sortMode === "volume"
+        ) {
+          setSortMode(saved.sortMode);
         }
       } catch {
         // ignore corrupted storage
@@ -211,9 +280,10 @@ export default function GeneralAnalysisPage() {
         endDate,
         selectedSiteId,
         onlyArticles,
+        sortMode,
       })
     );
-  }, [ready, startDate, endDate, selectedSiteId, onlyArticles]);
+  }, [ready, startDate, endDate, selectedSiteId, onlyArticles, sortMode]);
 
   const runAnalysis = async () => {
     if (!selectedSiteId) {
@@ -320,6 +390,19 @@ export default function GeneralAnalysisPage() {
               Sadece haber URL&apos;leri
             </label>
 
+            <label className="min-w-[190px] text-xs font-semibold text-slate-500">
+              Sıralama
+              <select
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as SortMode)}
+                className="mt-2 w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+              >
+                <option value="drag">Süreyi düşürenler</option>
+                <option value="lowDuration">En düşük süre</option>
+                <option value="volume">En çok gösterim</option>
+              </select>
+            </label>
+
             <button
               type="button"
               onClick={runAnalysis}
@@ -382,6 +465,46 @@ export default function GeneralAnalysisPage() {
                   {rows.length}
                 </div>
               </div>
+
+              <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                  Ort. Okuma
+                </p>
+                <div className="mt-3 text-3xl font-bold text-slate-900">
+                  {formatSeconds(summary.avgReadSeconds)}
+                </div>
+                <p className="mt-2 text-sm text-slate-500">
+                  Ölçülen: {formatSeconds(summary.avgTrackedReadSeconds)}
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                  Ping Kapsamı
+                </p>
+                <div className="mt-3 text-3xl font-bold text-slate-900">
+                  {formatPercent(
+                    summary.totalPageviews > 0
+                      ? summary.trackedReads / summary.totalPageviews
+                      : 0
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-slate-500">
+                  Eksik/0: {summary.untrackedPageviews}
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm shadow-slate-900/5">
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                  50 sn Üstü
+                </p>
+                <div className="mt-3 text-3xl font-bold text-slate-900">
+                  {summary.readBuckets.ge50}
+                </div>
+                <p className="mt-2 text-sm text-slate-500">
+                  30 sn üstü: {summary.readBuckets.ge30}
+                </p>
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -412,18 +535,18 @@ export default function GeneralAnalysisPage() {
                 Sonuçlar
               </p>
               <h2 className="text-lg font-semibold text-slate-900">
-                Haber Bazlı Kaynak Kırılımı
+                Haber Bazlı Okunma ve Kaynak Kırılımı
               </h2>
               <p className="text-sm text-slate-500">
-                Her haberde toplam okunma, tekil ziyaretçi ve kaynak dağılımı
-                birlikte gösterilir.
+                Ortalama süre 0 dahil hesaplanır; ping gelmeyen hızlı çıkışlar
+                eksik/0 okuma olarak sayılır.
               </p>
             </div>
             <div className="text-xs text-slate-400">Toplam: {rows.length}</div>
           </div>
 
           <div className="mt-4 overflow-x-auto">
-            <table className="min-w-[1600px] text-left text-sm">
+            <table className="min-w-[1900px] text-left text-sm">
               <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   <th className="px-3 py-2">Site</th>
@@ -431,6 +554,11 @@ export default function GeneralAnalysisPage() {
                   <th className="px-3 py-2">URL</th>
                   <th className="px-3 py-2">Toplam Gösterim</th>
                   <th className="px-3 py-2">Tekil</th>
+                  <th className="px-3 py-2">Ort. Süre</th>
+                  <th className="px-3 py-2">Ölçülen Ort.</th>
+                  <th className="px-3 py-2">Eksik/0</th>
+                  <th className="px-3 py-2">Kısa Oran</th>
+                  <th className="px-3 py-2">50 sn Üstü</th>
                   <th className="px-3 py-2">Facebook</th>
                   <th className="px-3 py-2">Instagram</th>
                   <th className="px-3 py-2">Discover</th>
@@ -443,53 +571,75 @@ export default function GeneralAnalysisPage() {
                 {rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={16}
                       className="px-3 py-6 text-center text-sm text-slate-400"
                     >
                       Sonuç bulunamadı.
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
-                    <tr
-                      key={`${row.websiteId}:${row.url}`}
-                      className="border-b border-slate-100 last:border-none"
-                    >
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.websiteName}
-                      </td>
-                      <td className="px-3 py-2 font-medium text-slate-800">
-                        {row.title || "[Başlık Yok]"}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {row.url || "[Bilinmeyen]"}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.totalPageviews}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.uniqueVisitors}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.sources.facebook.pageviews}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.sources.instagram.pageviews}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.sources.googleDiscover.pageviews}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.sources.googleSearch.pageviews}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.sources.direct.pageviews}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {row.sources.other.pageviews}
-                      </td>
-                    </tr>
-                  ))
+                  sortedRows.map((row) => {
+                    const shortReads = row.untrackedPageviews + row.readBuckets.lt3;
+                    const shortRate =
+                      row.totalPageviews > 0
+                        ? shortReads / row.totalPageviews
+                        : 0;
+                    return (
+                      <tr
+                        key={`${row.websiteId}:${row.url}`}
+                        className="border-b border-slate-100 last:border-none"
+                      >
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.websiteName}
+                        </td>
+                        <td className="px-3 py-2 font-medium text-slate-800">
+                          {row.title || "[Başlık Yok]"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {row.url || "[Bilinmeyen]"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.totalPageviews}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.uniqueVisitors}
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-slate-900">
+                          {formatSeconds(row.avgReadSeconds)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {formatSeconds(row.avgTrackedReadSeconds)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.untrackedPageviews}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {formatPercent(shortRate)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.readBuckets.ge50}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.sources.facebook.pageviews}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.sources.instagram.pageviews}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.sources.googleDiscover.pageviews}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.sources.googleSearch.pageviews}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.sources.direct.pageviews}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.sources.other.pageviews}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

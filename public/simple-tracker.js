@@ -159,6 +159,13 @@
   let pingInterval = null;
   let lastPageviewTs = null;
   let lastUrl = `${location.pathname}${location.search}`;
+  const initialNavigationUrl = (() => {
+    try {
+      return performance.getEntriesByType("navigation")?.[0]?.name || location.href;
+    } catch {
+      return location.href;
+    }
+  })();
 
   const safeJsonParse = (value) => {
     try {
@@ -209,8 +216,13 @@
     return meta;
   };
 
-  const readPcMetaFromQuery = () => {
-    const params = new URLSearchParams(location.search);
+  const readPcMetaFromQuery = (value = location.href) => {
+    let params = null;
+    try {
+      params = new URL(value, location.href).searchParams;
+    } catch {
+      params = new URLSearchParams(location.search);
+    }
     const clickaduCode = params.get("c");
     if (clickaduCode) {
       return { pc_source: "clickadu", pc_cat: clickaduCode };
@@ -256,7 +268,7 @@
   };
 
   const updatePcMetaFromLocation = () => {
-    const meta = readPcMetaFromHash() || readPcMetaFromQuery();
+    const meta = readPcMetaFromHash() || readPcMetaFromQuery() || readPcMetaFromQuery(initialNavigationUrl);
     if (meta) persistPcMeta(meta);
   };
 
