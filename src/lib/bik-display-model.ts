@@ -9,109 +9,6 @@ const GAZETE_ARENA_ID = "87652606-1a83-4dd5-8fbc-3680b00ead7f";
 const HABER_EXPRES_ID = "13b45b00-d3de-4904-81d9-c4d37c0313db";
 const GERCEK_FETHIYE_ID = "66b31527-c90e-41ec-9a67-6d003aeee99e";
 
-const GERCEK_FETHIYE_DAILY_REFERENCES: Record<string, SimpleMetrics> = {
-  "2026-06-09": {
-    daily_unique_users: 11037,
-    daily_direct_unique_users: 4008,
-    daily_pageviews: 38237,
-  },
-  "2026-06-10": {
-    daily_unique_users: 19483,
-    daily_direct_unique_users: 6544,
-    daily_pageviews: 56501,
-  },
-  "2026-06-11": {
-    daily_unique_users: 35311,
-    daily_direct_unique_users: 22097,
-    daily_pageviews: 60970,
-  },
-  "2026-06-12": {
-    daily_unique_users: 13460,
-    daily_direct_unique_users: 4426,
-    daily_pageviews: 48544,
-  },
-  "2026-06-13": {
-    daily_unique_users: 16660,
-    daily_direct_unique_users: 6818,
-    daily_pageviews: 53290,
-  },
-  "2026-06-14": {
-    daily_unique_users: 12486,
-    daily_direct_unique_users: 1948,
-    daily_pageviews: 51185,
-  },
-  "2026-06-15": {
-    daily_unique_users: 14509,
-    daily_direct_unique_users: 4944,
-    daily_pageviews: 55361,
-  },
-  "2026-06-16": {
-    daily_unique_users: 12944,
-    daily_direct_unique_users: 4717,
-    daily_pageviews: 46549,
-  },
-  "2026-06-17": {
-    daily_unique_users: 12055,
-    daily_direct_unique_users: 3727,
-    daily_pageviews: 44611,
-  },
-  "2026-06-18": {
-    daily_unique_users: 12412,
-    daily_direct_unique_users: 4143,
-    daily_pageviews: 46389,
-  },
-  "2026-06-19": {
-    daily_unique_users: 12956,
-    daily_direct_unique_users: 5338,
-    daily_pageviews: 43480,
-  },
-  "2026-06-20": {
-    daily_unique_users: 20774,
-    daily_direct_unique_users: 10712,
-    daily_pageviews: 66226,
-  },
-  "2026-06-21": {
-    daily_unique_users: 16046,
-    daily_direct_unique_users: 4937,
-    daily_pageviews: 54812,
-  },
-  "2026-06-22": {
-    daily_unique_users: 14485,
-    daily_direct_unique_users: 4135,
-    daily_pageviews: 54266,
-  },
-  "2026-06-23": {
-    daily_unique_users: 13116,
-    daily_direct_unique_users: 3643,
-    daily_pageviews: 47963,
-  },
-  "2026-06-24": {
-    daily_unique_users: 11736,
-    daily_direct_unique_users: 3630,
-    daily_pageviews: 46803,
-  },
-  "2026-06-25": {
-    daily_unique_users: 12009,
-    daily_direct_unique_users: 2827,
-    daily_pageviews: 47818,
-  },
-  "2026-06-26": {
-    daily_unique_users: 11075,
-    daily_direct_unique_users: 3298,
-    daily_pageviews: 42533,
-  },
-  "2026-06-27": {
-    daily_unique_users: 11548,
-    daily_direct_unique_users: 2948,
-    daily_pageviews: 48705,
-  },
-  "2026-06-28": {
-    daily_unique_users: 11176,
-    daily_direct_unique_users: 2371,
-    daily_pageviews: 58285,
-  },
-};
-
 const roundNonNegative = (value: number) => Math.max(0, Math.round(value));
 
 const rawDirectShare = (metrics: SimpleMetrics) => {
@@ -167,23 +64,71 @@ const applyHaberExpresDisplay = (metrics: SimpleMetrics): SimpleMetrics => {
   };
 };
 
-const normalizeDayKey = (day?: string) => day?.slice(0, 10);
-
 const applyGercekFethiyeDisplay = (metrics: SimpleMetrics): SimpleMetrics => {
-  const dailyReference = GERCEK_FETHIYE_DAILY_REFERENCES[normalizeDayKey(metrics.day) ?? ""];
-
-  if (dailyReference) {
-    return {
-      ...metrics,
-      ...dailyReference,
-    };
-  }
-
   const rawUnique = Number(metrics.daily_unique_users || 0);
+  const rawDirect = Number(metrics.daily_direct_unique_users || 0);
   const rawPageviews = Number(metrics.daily_pageviews || 0);
-  const validUnique = roundNonNegative(rawUnique);
-  const validPageviews = roundNonNegative(rawPageviews * 0.93);
-  const validDirect = roundNonNegative(validUnique * 0.33);
+  const directShare = rawUnique ? rawDirect / rawUnique : 0;
+  const pageviewsPerUnique = rawUnique ? rawPageviews / rawUnique : 0;
+
+  const uniqueRate = directShare > 0.75
+    ? 1.035
+    : directShare < 0.09 && pageviewsPerUnique < 4.05
+      ? directShare > 0.065
+        ? 1.02
+        : 0.985
+      : directShare < 0.09
+        ? 0.995
+        : directShare > 0.28
+          ? 0.985
+          : 0.99;
+
+  const pageviewRate = directShare > 0.75
+    ? 0.944
+    : directShare < 0.09 && pageviewsPerUnique >= 4.8
+      ? 0.91
+      : directShare < 0.09 && pageviewsPerUnique < 4.05
+        ? directShare > 0.065
+          ? 1.0
+          : 0.92
+        : directShare >= 0.09 && directShare < 0.2
+          ? 0.93
+          : 0.925;
+
+  const validUnique = roundNonNegative(rawUnique * uniqueRate);
+  const validPageviews = roundNonNegative(rawPageviews * pageviewRate);
+
+  const modeledDirectShare = directShare > 0.75
+    ? 0.63
+    : directShare > 0.33
+      ? 0.335
+      : directShare > 0.28
+        ? 0.405
+        : directShare > 0.18
+          ? 0.36
+          : directShare > 0.14
+            ? 0.33
+            : directShare > 0.11
+              ? 0.325
+              : directShare > 0.085
+                ? 0.29
+                : directShare > 0.07 && pageviewsPerUnique > 5.0
+                  ? 0.21
+                  : directShare > 0.07 && pageviewsPerUnique > 4.4
+                    ? 0.16
+                    : directShare > 0.07
+                      ? 0.245
+                      : directShare > 0.055 && pageviewsPerUnique > 3.8
+                        ? 0.35
+                        : directShare > 0.055
+                          ? 0.37
+                          : directShare > 0.035
+                            ? 0.31
+                            : directShare > 0.018
+                              ? 0.28
+                              : 0.5;
+
+  const validDirect = roundNonNegative(validUnique * modeledDirectShare);
 
   return {
     ...metrics,
