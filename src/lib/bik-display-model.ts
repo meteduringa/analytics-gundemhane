@@ -6,6 +6,8 @@ type SimpleMetrics = {
 
 const GAZETE_ARENA_ID = "87652606-1a83-4dd5-8fbc-3680b00ead7f";
 const HABER_EXPRES_ID = "13b45b00-d3de-4904-81d9-c4d37c0313db";
+const GERCEK_FETHIYE_ID = "66b31527-c90e-41ec-9a67-6d003aeee99e";
+const HABER_EXPRES_MODEL_SITE_IDS = new Set([HABER_EXPRES_ID, GERCEK_FETHIYE_ID]);
 
 const roundNonNegative = (value: number) => Math.max(0, Math.round(value));
 
@@ -71,7 +73,7 @@ export const applyBikDisplayModel = <T extends SimpleMetrics>(
   raw_daily_pageviews?: number;
   display_model?: "bik-display";
 } => {
-  if (siteId !== GAZETE_ARENA_ID && siteId !== HABER_EXPRES_ID) {
+  if (siteId !== GAZETE_ARENA_ID && !HABER_EXPRES_MODEL_SITE_IDS.has(siteId)) {
     return metrics;
   }
 
