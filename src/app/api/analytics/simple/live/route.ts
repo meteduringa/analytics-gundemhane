@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getIstanbulDayRange } from "@/lib/bik-time";
-import { applyBikDisplayModel } from "@/lib/bik-display-model";
 
 export const runtime = "nodejs";
 
@@ -41,7 +40,7 @@ export async function GET(request: Request) {
     day: "2-digit",
   }).format(start);
 
-  const payload = applyBikDisplayModel(siteId, {
+  const payload = {
     siteId,
     day: start.toISOString().split("T")[0],
     day_start_local: dayStartLocal,
@@ -55,7 +54,7 @@ export async function GET(request: Request) {
       record?.dailyAvgTimeOnSiteSecondsPerUnique ?? 0,
     daily_popcent_unique_users: 0,
     daily_popcent_pageviews: 0,
-  });
+  };
 
   return NextResponse.json(payload, {
     headers: {

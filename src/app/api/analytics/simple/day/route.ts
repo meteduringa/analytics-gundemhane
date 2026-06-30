@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { parseDayParam } from "@/lib/bik-time";
 import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
 import { getIstanbulDayRange } from "@/lib/bik-time";
-import { applyBikDisplayModel } from "@/lib/bik-display-model";
 
 export const runtime = "nodejs";
 
@@ -36,7 +35,7 @@ export async function GET(request: Request) {
   };
 
   if (existing && !isToday) {
-    return NextResponse.json(applyBikDisplayModel(siteId, {
+    return NextResponse.json({
       siteId,
       day: dayString,
       as_of_utc: now.toISOString(),
@@ -48,10 +47,10 @@ export async function GET(request: Request) {
         existing.dailyAvgTimeOnSiteSecondsPerUnique,
       daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
       daily_popcent_pageviews: Number(popcentSummary.total_events),
-    }));
+    });
   }
   if (existing && isToday) {
-    return NextResponse.json(applyBikDisplayModel(siteId, {
+    return NextResponse.json({
       siteId,
       day: dayString,
       as_of_utc: now.toISOString(),
@@ -63,7 +62,7 @@ export async function GET(request: Request) {
         existing.dailyAvgTimeOnSiteSecondsPerUnique,
       daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
       daily_popcent_pageviews: Number(popcentSummary.total_events),
-    }));
+    });
   }
   const computed = await computeSimpleDayMetrics(siteId, dayDate);
   const saved = await prisma.analyticsDailySimple.upsert({
@@ -91,7 +90,7 @@ export async function GET(request: Request) {
     },
   });
 
-  return NextResponse.json(applyBikDisplayModel(siteId, {
+  return NextResponse.json({
     siteId,
     day: computed.dayString,
     as_of_utc: now.toISOString(),
@@ -103,5 +102,5 @@ export async function GET(request: Request) {
       saved.dailyAvgTimeOnSiteSecondsPerUnique,
     daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
     daily_popcent_pageviews: Number(popcentSummary.total_events),
-  }));
+  });
 }
