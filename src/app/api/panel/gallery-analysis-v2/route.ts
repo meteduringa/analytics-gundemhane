@@ -162,7 +162,7 @@ export async function GET(request: Request) {
         ) AS page_text
       FROM "analytics_events" ce
       JOIN matched m
-        ON (ce."sessionId" = m.session_id OR ce."visitorId" = m.visitor_id)
+        ON ce."sessionId" = m.session_id
        AND ce."createdAt" >= m.anchor_at
        AND ce."createdAt" <= m.anchor_at + (${windowMinutes} * interval '1 minute')
       WHERE ${chainWhere}
