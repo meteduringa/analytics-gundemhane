@@ -73,6 +73,34 @@ type PcCatRow = {
   visitors: bigint;
 };
 
+type DurationRow = {
+  avg_session_seconds: number | string | null;
+  median_session_seconds: number | string | null;
+  max_session_seconds: number | string | null;
+  lt3_sessions: bigint;
+  lt10_sessions: bigint;
+  ge10_sessions: bigint;
+  ge30_sessions: bigint;
+  ge60_sessions: bigint;
+};
+
+type DepthDurationRow = {
+  pages_read: number;
+  sessions: bigint;
+  avg_session_seconds: number | string | null;
+  median_session_seconds: number | string | null;
+  ge30_sessions: bigint;
+  ge60_sessions: bigint;
+};
+
+type PageReadRow = {
+  page_no: number;
+  tracked_reads: bigint;
+  avg_read_seconds: number | string | null;
+  median_read_seconds: number | string | null;
+  max_read_seconds: number | string | null;
+};
+
 export async function GET(request: Request) {
   const session = await readPanelSession();
   if (!session) return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
@@ -259,7 +287,122 @@ export async function GET(request: Request) {
     LIMIT 20
   `) as PcCatRow[];
 
+  const durationRows = (await prisma.$queryRaw`
+    ${chainSql},
+    durations AS (
+      SELECT
+        m.session_id,
+        m.visitor_id,
+        GREATEST(
+          0,
+          EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
+        ) AS duration_seconds
+      FROM matched m
+      JOIN "analytics_sessions" s
+        ON s."websiteId" = ${websiteId}
+       AND s."sessionId" = m.session_id
+    )
+    SELECT
+      AVG(duration_seconds) AS avg_session_seconds,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS median_session_seconds,
+      MAX(duration_seconds) AS max_session_seconds,
+      SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+      SUM(CASE WHEN duration_seconds < 10 THEN 1 ELSE 0 END) AS lt10_sessions,
+      SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions,
+      SUM(CASE WHEN duration_seconds >= 30 THEN 1 ELSE 0 END) AS ge30_sessions,
+      SUM(CASE WHEN duration_seconds >= 60 THEN 1 ELSE 0 END) AS ge60_sessions
+    FROM durations
+  `) as DurationRow[];
+
+  const depthDurationRows = (await prisma.$queryRaw`
+    ${chainSql},
+    session_pages AS (
+      SELECT
+        session_id,
+        visitor_id,
+        COUNT(DISTINCT page_no) AS pages_read
+      FROM clean_chain
+      GROUP BY session_id, visitor_id
+    ),
+    durations AS (
+      SELECT
+        sp.pages_read,
+        sp.session_id,
+        sp.visitor_id,
+        GREATEST(
+          0,
+          EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
+        ) AS duration_seconds
+      FROM session_pages sp
+      JOIN "analytics_sessions" s
+        ON s."websiteId" = ${websiteId}
+       AND s."sessionId" = sp.session_id
+    )
+    SELECT
+      pages_read::int AS pages_read,
+      COUNT(*) AS sessions,
+      AVG(duration_seconds) AS avg_session_seconds,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS median_session_seconds,
+      SUM(CASE WHEN duration_seconds >= 30 THEN 1 ELSE 0 END) AS ge30_sessions,
+      SUM(CASE WHEN duration_seconds >= 60 THEN 1 ELSE 0 END) AS ge60_sessions
+    FROM durations
+    GROUP BY pages_read
+    ORDER BY pages_read ASC
+  `) as DepthDurationRow[];
+
+  const pageReadRows = (await prisma.$queryRaw`
+    ${chainSql},
+    ping_events AS (
+      SELECT
+        m.session_id,
+        m.visitor_id,
+        COALESCE(
+          NULLIF(substring(e."url" from '[?&]p=([0-9]+)'), ''),
+          NULLIF(substring(e."url" from '[?&]pg=([0-9]+)'), ''),
+          NULLIF(substring(e."url" from '[?&]page=([0-9]+)'), ''),
+          '1'
+        ) AS page_text,
+        CASE
+          WHEN (e."eventData"->>'elapsedSeconds') ~ '^[0-9]+(\\.[0-9]+)?$'
+            THEN (e."eventData"->>'elapsedSeconds')::numeric
+          ELSE NULL
+        END AS elapsed_seconds
+      FROM "analytics_events" e
+      JOIN matched m
+        ON e."sessionId" = m.session_id
+       AND e."createdAt" >= m.anchor_at
+       AND e."createdAt" <= m.anchor_at + (${windowMinutes} * interval '1 minute')
+      WHERE e."websiteId" = ${websiteId}
+        AND e."type" = 'EVENT'
+        AND e."mode" = 'RAW'
+        AND e."eventName" = 'ping'
+        AND rtrim(split_part(e."url", '?', 1), '/') = rtrim(${landingPath}, '/')
+        ${startDate ? Prisma.sql`AND e."createdAt" >= ${startDate}` : Prisma.empty}
+        ${endDate ? Prisma.sql`AND e."createdAt" <= ${endDate}` : Prisma.empty}
+    ),
+    read_samples AS (
+      SELECT
+        session_id,
+        visitor_id,
+        CASE WHEN page_text ~ '^[0-9]+$' THEN page_text::int ELSE 1 END AS page_no,
+        MAX(elapsed_seconds) AS read_seconds
+      FROM ping_events
+      WHERE elapsed_seconds IS NOT NULL
+      GROUP BY session_id, visitor_id, CASE WHEN page_text ~ '^[0-9]+$' THEN page_text::int ELSE 1 END
+    )
+    SELECT
+      page_no,
+      COUNT(*) AS tracked_reads,
+      AVG(read_seconds) AS avg_read_seconds,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY read_seconds) AS median_read_seconds,
+      MAX(read_seconds) AS max_read_seconds
+    FROM read_samples
+    GROUP BY page_no
+    ORDER BY page_no ASC
+  `) as PageReadRow[];
+
   const summary = summaryRows[0];
+  const duration = durationRows[0];
   const sessions = num(summary?.anchor_sessions);
   const pageviews = num(summary?.distinct_session_pageviews);
   const observedMaxPage = num(summary?.observed_max_page);
@@ -297,6 +440,16 @@ export async function GET(request: Request) {
       nativeRawEvents: num(summary?.native_raw_events),
       exactTokenEvents: num(summary?.exact_token_events),
       wrongPcCatEvents: num(summary?.wrong_pc_cat_events),
+      avgSessionSeconds: Math.round(Number(duration?.avg_session_seconds ?? 0)),
+      medianSessionSeconds: Math.round(Number(duration?.median_session_seconds ?? 0)),
+      maxSessionSeconds: Math.round(Number(duration?.max_session_seconds ?? 0)),
+      durationBuckets: {
+        lt3: num(duration?.lt3_sessions),
+        lt10: num(duration?.lt10_sessions),
+        ge10: num(duration?.ge10_sessions),
+        ge30: num(duration?.ge30_sessions),
+        ge60: num(duration?.ge60_sessions),
+      },
     },
     pages: pageRows.map((row) => ({
       page: Number(row.page_no),
@@ -312,6 +465,21 @@ export async function GET(request: Request) {
       pagesRead: Number(row.pages_read),
       sessions: num(row.sessions),
       visitors: num(row.visitors),
+    })),
+    sessionDepthDuration: depthDurationRows.map((row) => ({
+      pagesRead: Number(row.pages_read),
+      sessions: num(row.sessions),
+      avgSessionSeconds: Math.round(Number(row.avg_session_seconds ?? 0)),
+      medianSessionSeconds: Math.round(Number(row.median_session_seconds ?? 0)),
+      ge30Sessions: num(row.ge30_sessions),
+      ge60Sessions: num(row.ge60_sessions),
+    })),
+    pageReadSeconds: pageReadRows.map((row) => ({
+      page: Number(row.page_no),
+      trackedReads: num(row.tracked_reads),
+      avgReadSeconds: Math.round(Number(row.avg_read_seconds ?? 0)),
+      medianReadSeconds: Math.round(Number(row.median_read_seconds ?? 0)),
+      maxReadSeconds: Math.round(Number(row.max_read_seconds ?? 0)),
     })),
     pcCatBreakdown: pcCatRows.map((row) => ({
       pcCat: row.pc_cat ?? "[NULL]",
