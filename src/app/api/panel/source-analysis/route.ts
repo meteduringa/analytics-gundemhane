@@ -97,6 +97,12 @@ export async function GET(request: Request) {
   const popcentOnly = searchParams.get("popcentOnly") !== "0";
   const pcCat = searchParams.get("pcCat")?.trim() || null;
   const pcSource = searchParams.get("pcSource")?.trim() || null;
+  const attributionParam = (
+    searchParams.get("identityAttribution") ??
+    searchParams.get("attribution") ??
+    searchParams.get("chain") ??
+    ""
+  ).trim().toLowerCase();
 
   if (!websiteId) {
     return NextResponse.json(
@@ -130,6 +136,11 @@ export async function GET(request: Request) {
     );
   }
   const landingPath = normalizeLandingUrl(landingUrlRaw);
+  const identityAttribution =
+    Boolean(pcCat && landingPath) &&
+    attributionParam !== "0" &&
+    attributionParam !== "false" &&
+    attributionParam !== "event";
 
   const popcentHostList = Prisma.join(
     POPCENT_REFERRER_HOSTS.map((host) => Prisma.sql`${host}`),
@@ -173,6 +184,303 @@ export async function GET(request: Request) {
   }
 
   const whereClause = Prisma.join(conditions, " AND ");
+
+  if (identityAttribution) {
+    const chainConditions: Prisma.Sql[] = [
+      Prisma.sql`ce."websiteId" = ${websiteId}`,
+      Prisma.sql`ce."type" = 'PAGEVIEW'`,
+      Prisma.sql`ce."mode" = 'RAW'`,
+    ];
+
+    if (startDate) {
+      chainConditions.push(Prisma.sql`ce."createdAt" >= ${startDate}`);
+    }
+    if (endDate) {
+      chainConditions.push(Prisma.sql`ce."createdAt" <= ${endDate}`);
+    }
+    chainConditions.push(
+      Prisma.sql`rtrim(split_part(ce."url", '?', 1), '/') = rtrim(${landingPath}, '/')`
+    );
+
+    const chainWhereClause = Prisma.join(chainConditions, " AND ");
+
+    const rows = (await prisma.$queryRaw`
+      WITH anchor_events AS (
+        SELECT
+          e."sessionId" AS "sessionId",
+          e."visitorId" AS "visitorId",
+          (e."eventData"->>'source_website_id') AS source_website_id,
+          CASE
+            WHEN (e."referrer" IS NULL OR e."referrer" = '')
+              AND (
+                e."url" ILIKE '%fbclid=%'
+                OR e."url" ILIKE '%utm_source=fb%'
+                OR e."url" ILIKE '%utm_source=facebook%'
+              )
+              THEN 'facebook.com'
+            WHEN (e."referrer" IS NULL OR e."referrer" = '')
+              AND (
+                e."url" ILIKE '%igshid=%'
+                OR e."url" ILIKE '%utm_source=ig%'
+                OR e."url" ILIKE '%utm_source=instagram%'
+              )
+              THEN 'instagram.com'
+            ELSE NULLIF(regexp_replace(e."referrer", '^https?://([^/]+)/?.*$', '\\1'), '')
+          END AS referrer_host,
+          e."createdAt" AS anchor_at
+        FROM "analytics_events" e
+        WHERE ${whereClause}
+      ),
+      matched AS (
+        SELECT DISTINCT ON ("sessionId")
+          "sessionId",
+          "visitorId",
+          source_website_id,
+          referrer_host,
+          anchor_at
+        FROM anchor_events
+        ORDER BY "sessionId", anchor_at ASC
+      ),
+      chain_events AS (
+        SELECT DISTINCT ON (ce."id")
+          ce."id" AS id,
+          ce."sessionId" AS "sessionId",
+          ce."visitorId" AS "visitorId",
+          ce."url" AS url,
+          COALESCE(m.source_website_id, m.referrer_host, '[DIRECT]') AS source_website_id,
+          COALESCE(
+            NULLIF(substring(ce."url" from '[?&]p=([0-9]+)'), ''),
+            NULLIF(substring(ce."url" from '[?&]pg=([0-9]+)'), ''),
+            NULLIF(substring(ce."url" from '[?&]page=([0-9]+)'), ''),
+            '1'
+          ) AS page_no
+        FROM "analytics_events" ce
+        JOIN matched m
+          ON (ce."sessionId" = m."sessionId" OR ce."visitorId" = m."visitorId")
+         AND ce."createdAt" >= m.anchor_at
+         AND ce."createdAt" <= m.anchor_at + interval '60 minutes'
+        WHERE ${chainWhereClause}
+        ORDER BY ce."id", m.anchor_at ASC
+      ),
+      pageviews AS (
+        SELECT
+          source_website_id,
+          COUNT(DISTINCT concat_ws('|', "visitorId", "sessionId", rtrim(split_part(url, '?', 1), '/'), page_no)) AS total_pageviews
+        FROM chain_events
+        GROUP BY source_website_id
+      ),
+      durations AS (
+        SELECT
+          COALESCE(m.source_website_id, m.referrer_host, '[DIRECT]') AS source_website_id,
+          m."sessionId" AS "sessionId",
+          m."visitorId" AS "visitorId",
+          GREATEST(
+            0,
+            EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
+          ) AS duration_seconds
+        FROM matched m
+        JOIN "analytics_sessions" s
+          ON s."websiteId" = ${websiteId}
+         AND s."sessionId" = m."sessionId"
+      ),
+      grouped AS (
+        SELECT
+          source_website_id,
+          COUNT(*) AS total_sessions,
+          COUNT(DISTINCT "visitorId") AS total_visitors,
+          SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+          SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+          SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+          SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions,
+          COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS lt1_visitors,
+          COUNT(DISTINCT CASE WHEN duration_seconds < 3 THEN "visitorId" END) AS lt3_visitors,
+          COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS ge5_visitors,
+          COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS ge10_visitors
+        FROM durations
+        GROUP BY source_website_id
+      )
+      SELECT
+        g.source_website_id,
+        COALESCE(p.total_pageviews, 0) AS total_pageviews,
+        g.total_sessions,
+        g.total_visitors,
+        g.lt1_sessions,
+        g.lt3_sessions,
+        g.ge5_sessions,
+        g.ge10_sessions,
+        g.lt1_visitors,
+        g.lt3_visitors,
+        g.ge5_visitors,
+        g.ge10_visitors
+      FROM grouped g
+      LEFT JOIN pageviews p ON p.source_website_id = g.source_website_id
+      ORDER BY g.ge5_sessions DESC
+      LIMIT 200
+    `) as SourceRow[];
+
+    const summaryRows = (await prisma.$queryRaw`
+      WITH anchor_events AS (
+        SELECT
+          e."sessionId" AS "sessionId",
+          e."visitorId" AS "visitorId",
+          e."createdAt" AS anchor_at
+        FROM "analytics_events" e
+        WHERE ${whereClause}
+      ),
+      matched AS (
+        SELECT DISTINCT ON ("sessionId")
+          "sessionId",
+          "visitorId",
+          anchor_at
+        FROM anchor_events
+        ORDER BY "sessionId", anchor_at ASC
+      ),
+      chain_events AS (
+        SELECT DISTINCT ON (ce."id")
+          ce."id" AS id,
+          ce."sessionId" AS "sessionId",
+          ce."visitorId" AS "visitorId",
+          ce."url" AS url,
+          COALESCE(
+            NULLIF(substring(ce."url" from '[?&]p=([0-9]+)'), ''),
+            NULLIF(substring(ce."url" from '[?&]pg=([0-9]+)'), ''),
+            NULLIF(substring(ce."url" from '[?&]page=([0-9]+)'), ''),
+            '1'
+          ) AS page_no
+        FROM "analytics_events" ce
+        JOIN matched m
+          ON (ce."sessionId" = m."sessionId" OR ce."visitorId" = m."visitorId")
+         AND ce."createdAt" >= m.anchor_at
+         AND ce."createdAt" <= m.anchor_at + interval '60 minutes'
+        WHERE ${chainWhereClause}
+        ORDER BY ce."id", m.anchor_at ASC
+      ),
+      chain_pageviews AS (
+        SELECT DISTINCT
+          concat_ws('|', "visitorId", "sessionId", rtrim(split_part(url, '?', 1), '/'), page_no) AS page_key
+        FROM chain_events
+      ),
+      durations AS (
+        SELECT
+          m."sessionId" AS "sessionId",
+          m."visitorId" AS "visitorId",
+          GREATEST(
+            0,
+            EXTRACT(EPOCH FROM (s."lastSeenAt" - s."startedAt"))
+          ) AS duration_seconds
+        FROM matched m
+        JOIN "analytics_sessions" s
+          ON s."websiteId" = ${websiteId}
+         AND s."sessionId" = m."sessionId"
+      )
+      SELECT
+        (SELECT COUNT(*) FROM chain_pageviews) AS total_pageviews,
+        COUNT(*) AS total_sessions,
+        COUNT(DISTINCT "visitorId") AS total_visitors,
+        SUM(CASE WHEN duration_seconds < 1 THEN 1 ELSE 0 END) AS lt1_sessions,
+        SUM(CASE WHEN duration_seconds < 3 THEN 1 ELSE 0 END) AS lt3_sessions,
+        SUM(CASE WHEN duration_seconds >= 5 THEN 1 ELSE 0 END) AS ge5_sessions,
+        SUM(CASE WHEN duration_seconds >= 10 THEN 1 ELSE 0 END) AS ge10_sessions,
+        COUNT(DISTINCT CASE WHEN duration_seconds < 1 THEN "visitorId" END) AS lt1_visitors,
+        COUNT(DISTINCT CASE WHEN duration_seconds < 3 THEN "visitorId" END) AS lt3_visitors,
+        COUNT(DISTINCT CASE WHEN duration_seconds >= 5 THEN "visitorId" END) AS ge5_visitors,
+        COUNT(DISTINCT CASE WHEN duration_seconds >= 10 THEN "visitorId" END) AS ge10_visitors
+      FROM durations
+    `) as SummaryRow[];
+
+    const summaryRow = summaryRows[0];
+    const summary = summaryRow
+      ? {
+          totalSessions: Number(summaryRow.total_sessions ?? 0),
+          totalVisitors: Number(summaryRow.total_visitors ?? 0),
+          totalPageviews: Number(summaryRow.total_pageviews ?? 0),
+          longSessions: {
+            lt1: Number(summaryRow.lt1_sessions ?? 0),
+            lt3: Number(summaryRow.lt3_sessions ?? 0),
+            ge5: Number(summaryRow.ge5_sessions ?? 0),
+            ge10: Number(summaryRow.ge10_sessions ?? 0),
+          },
+          longVisitors: {
+            lt1: Number(summaryRow.lt1_visitors ?? 0),
+            lt3: Number(summaryRow.lt3_visitors ?? 0),
+            ge5: Number(summaryRow.ge5_visitors ?? 0),
+            ge10: Number(summaryRow.ge10_visitors ?? 0),
+          },
+          longShare: {
+            lt1: summaryRow.total_sessions
+              ? Math.round(
+                  (Number(summaryRow.lt1_sessions ?? 0) /
+                    Number(summaryRow.total_sessions)) *
+                    100
+                )
+              : 0,
+            lt3: summaryRow.total_sessions
+              ? Math.round(
+                  (Number(summaryRow.lt3_sessions ?? 0) /
+                    Number(summaryRow.total_sessions)) *
+                    100
+                )
+              : 0,
+            ge5: summaryRow.total_sessions
+              ? Math.round(
+                  (Number(summaryRow.ge5_sessions ?? 0) /
+                    Number(summaryRow.total_sessions)) *
+                    100
+                )
+              : 0,
+            ge10: summaryRow.total_sessions
+              ? Math.round(
+                  (Number(summaryRow.ge10_sessions ?? 0) /
+                    Number(summaryRow.total_sessions)) *
+                    100
+                )
+              : 0,
+          },
+        }
+      : null;
+
+    return NextResponse.json({
+      sources: rows.map((row) => ({
+        sourceWebsiteId: row.source_website_id,
+        totalPageviews: Number(row.total_pageviews ?? 0),
+        totalSessions: Number(row.total_sessions ?? 0),
+        totalVisitors: Number(row.total_visitors ?? 0),
+        longSessions: {
+          lt1: Number(row.lt1_sessions ?? 0),
+          lt3: Number(row.lt3_sessions ?? 0),
+          ge5: Number(row.ge5_sessions ?? 0),
+          ge10: Number(row.ge10_sessions ?? 0),
+        },
+        longVisitors: {
+          lt1: Number(row.lt1_visitors ?? 0),
+          lt3: Number(row.lt3_visitors ?? 0),
+          ge5: Number(row.ge5_visitors ?? 0),
+          ge10: Number(row.ge10_visitors ?? 0),
+        },
+        longShare: {
+          lt1: row.total_sessions
+            ? Math.round((Number(row.lt1_sessions ?? 0) / Number(row.total_sessions)) * 100)
+            : 0,
+          lt3: row.total_sessions
+            ? Math.round((Number(row.lt3_sessions ?? 0) / Number(row.total_sessions)) * 100)
+            : 0,
+          ge5: row.total_sessions
+            ? Math.round((Number(row.ge5_sessions ?? 0) / Number(row.total_sessions)) * 100)
+            : 0,
+          ge10: row.total_sessions
+            ? Math.round((Number(row.ge10_sessions ?? 0) / Number(row.total_sessions)) * 100)
+            : 0,
+        },
+      })),
+      summary,
+      thresholds: ["lt1", "lt3", "ge5", "ge10"],
+      popcentOnly,
+      pcCat,
+      pcSource,
+      attribution: "identity",
+      identityAttribution: true,
+    });
+  }
 
   const rows = (await prisma.$queryRaw`
     WITH events AS (
