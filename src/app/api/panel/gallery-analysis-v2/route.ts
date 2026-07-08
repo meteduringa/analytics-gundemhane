@@ -147,8 +147,8 @@ export async function GET(request: Request) {
     chain_events AS (
       SELECT DISTINCT ON (ce.id)
         ce.id,
-        ce."sessionId" AS session_id,
-        ce."visitorId" AS visitor_id,
+        m.session_id,
+        m.visitor_id,
         ce."createdAt" AS created_at,
         ce."url" AS url,
         ce."eventData"->>'pc_cat' AS event_pc_cat,
