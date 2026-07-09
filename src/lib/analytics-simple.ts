@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { getIstanbulDayRange } from "@/lib/bik-time";
+import {
+  computeBikReferenceMetrics,
+  type BikReferenceEvent,
+} from "@/lib/bik-reference-model";
 
 const DEDUPE_WINDOW_MS = 1500;
 const SESSION_INACTIVITY_MINUTES = 35;
@@ -81,6 +85,7 @@ const normalizeHost = (value: string | null) => {
 type SimpleEvent = {
   id: string;
   visitorId: string;
+  sessionId: string;
   url: string;
   referrer: string | null;
   eventData: unknown;
@@ -92,16 +97,79 @@ type SimpleEvent = {
 type PingEvent = {
   id: string;
   visitorId: string;
+  sessionId: string;
+  url: string;
+  referrer: string | null;
   createdAt: Date;
   clientTimestamp: Date | null;
   eventData: unknown;
+  countryCode: string | null;
 };
+
+export type SimpleMetricsMode = "AUTO" | "RAW" | "BIK_STRICT";
 
 const extractPcSource = (value: unknown) => {
   if (!value || typeof value !== "object") return null;
   const raw = (value as Record<string, unknown>).pc_source;
   return typeof raw === "string" ? raw : null;
 };
+
+const eventDataObject = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const dataString = (value: unknown, key: string) => {
+  const raw = eventDataObject(value)[key];
+  return typeof raw === "string" ? raw : raw == null ? null : String(raw);
+};
+
+const dataNumber = (value: unknown, key: string) => {
+  const parsed = Number(eventDataObject(value)[key]);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const dataBoolean = (value: unknown, key: string) => {
+  const raw = eventDataObject(value)[key];
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") {
+    if (raw.toLowerCase() === "true" || raw === "1") return true;
+    if (raw.toLowerCase() === "false" || raw === "0") return false;
+  }
+  if (typeof raw === "number") return raw !== 0;
+  return null;
+};
+
+const toBikReferenceEvents = (
+  pageviews: SimpleEvent[],
+  pings: PingEvent[]
+): BikReferenceEvent[] => [
+  ...pageviews.map((event) => ({
+    eventType: "pageview" as const,
+    visitorId: event.visitorId,
+    sessionId: dataString(event.eventData, "sessionId") ?? event.sessionId,
+    eventId: dataString(event.eventData, "eventId"),
+    url: event.url,
+    referrer: event.referrer ?? "",
+    ts: resolveEventTimestamp(event),
+    activeSeconds: dataNumber(event.eventData, "activeSeconds"),
+    isBot: dataBoolean(event.eventData, "isBot"),
+    countryCode: event.countryCode,
+  })),
+  ...pings.map((event) => ({
+    eventType: "check" as const,
+    visitorId: event.visitorId,
+    sessionId: dataString(event.eventData, "sessionId") ?? event.sessionId,
+    eventId: dataString(event.eventData, "eventId"),
+    url: event.url,
+    ts: resolveEventTimestamp(event),
+    activeSeconds:
+      dataNumber(event.eventData, "activeSeconds") ??
+      dataNumber(event.eventData, "elapsedSeconds"),
+    isBot: dataBoolean(event.eventData, "isBot"),
+    countryCode: event.countryCode,
+  })),
+];
 
 const resolveEventTimestamp = (event: {
   createdAt: Date;
@@ -199,7 +267,11 @@ const computeVisitorTime = (timestamps: Date[]) => {
   return totalSeconds;
 };
 
-export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => {
+export const computeSimpleDayMetrics = async (
+  siteId: string,
+  dayDate: Date,
+  mode: SimpleMetricsMode = "AUTO"
+) => {
   const { start, end, dayString } = getIstanbulDayRange(dayDate);
   await prisma.analyticsWebsite.findUnique({
     where: { id: siteId },
@@ -233,6 +305,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
         select: {
           id: true,
           visitorId: true,
+          sessionId: true,
           url: true,
           referrer: true,
           eventData: true,
@@ -256,6 +329,7 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
         select: {
           id: true,
           visitorId: true,
+          sessionId: true,
           url: true,
           referrer: true,
           eventData: true,
@@ -270,13 +344,15 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     return mergeById([...byCreatedAt, ...byClientTimestamp]);
   };
 
-  const rawEvents = await fetchSimpleEvents("RAW");
-
-  const strictEvents = rawEvents.length
-    ? []
-      : await fetchSimpleEvents("BIK_STRICT");
-
-  const eventsSource = rawEvents.length ? rawEvents : strictEvents;
+  const rawEvents = mode === "BIK_STRICT" ? [] : await fetchSimpleEvents("RAW");
+  const strictEvents =
+    mode === "RAW"
+      ? []
+      : mode === "BIK_STRICT" || !rawEvents.length
+        ? await fetchSimpleEvents("BIK_STRICT")
+        : [];
+  const useStrictMode = mode === "BIK_STRICT" || (mode === "AUTO" && !rawEvents.length);
+  const eventsSource = useStrictMode ? strictEvents : rawEvents;
   const deduped = dedupeEvents(eventsSource.filter(isInDay));
 
   const fetchPingEvents = async (mode: "RAW" | "BIK_STRICT") => {
@@ -293,9 +369,13 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
         select: {
           id: true,
           visitorId: true,
+          sessionId: true,
+          url: true,
+          referrer: true,
           createdAt: true,
           clientTimestamp: true,
           eventData: true,
+          countryCode: true,
         },
       }),
       prisma.analyticsEvent.findMany({
@@ -313,9 +393,13 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
         select: {
           id: true,
           visitorId: true,
+          sessionId: true,
+          url: true,
+          referrer: true,
           createdAt: true,
           clientTimestamp: true,
           eventData: true,
+          countryCode: true,
         },
       }),
     ]);
@@ -323,11 +407,26 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     return mergeById([...byCreatedAt, ...byClientTimestamp]);
   };
 
-  const rawPingEvents = await fetchPingEvents("RAW");
+  const rawPingEvents = useStrictMode ? [] : await fetchPingEvents("RAW");
+  const strictPingEvents = useStrictMode ? await fetchPingEvents("BIK_STRICT") : [];
+  const pingEventsSource = useStrictMode ? strictPingEvents : rawPingEvents;
 
-  const pingEventsSource = rawEvents.length || rawPingEvents.length
-    ? rawPingEvents
-    : await fetchPingEvents("BIK_STRICT");
+  if (useStrictMode && (strictEvents.length || pingEventsSource.length)) {
+    const reference = computeBikReferenceMetrics(
+      toBikReferenceEvents(strictEvents, pingEventsSource),
+      { countryCode: "TR", includeUnknownCountry: true }
+    );
+
+    return {
+      dayString,
+      dayStart: new Date(`${dayString}T00:00:00+03:00`),
+      daily_unique_users: reference.daily_unique_visitors,
+      daily_direct_unique_users: reference.daily_direct_unique_visitors,
+      daily_pageviews: reference.daily_pageviews,
+      daily_avg_time_on_site_seconds_per_unique:
+        reference.daily_avg_time_on_site_seconds,
+    };
+  }
 
   const pingEvents = pingEventsSource.filter((event) => {
     const ts = resolveEventTimestamp(event).getTime();
@@ -352,8 +451,6 @@ export const computeSimpleDayMetrics = async (siteId: string, dayDate: Date) => 
     }
     pingMaxByVisitor.set(ping.visitorId, visitorMap);
   }
-  const dailyPageviews = deduped.length;
-
   const visitorEvents = new Map<string, SimpleEvent[]>();
   for (const event of deduped) {
     const list = visitorEvents.get(event.visitorId) ?? [];

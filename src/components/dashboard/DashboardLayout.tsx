@@ -20,6 +20,7 @@ const customerOnlyItems = [
 const adminOnlyItems = [
   { key: "source", label: "Kaynak Analizi", href: "/panel/kaynak-analiz" },
   { key: "general", label: "Genel Analiz", href: "/panel/genel-analiz" },
+  { key: "bik-test", label: "BİK Test", href: "/panel/bik-test" },
   { key: "targets", label: "Hedef Kontrol", href: "/panel/hedef-kontrol" },
   { key: "alerts", label: "Alarm Merkezi", href: "/panel/alarm-merkezi" },
   { key: "recompute", label: "Recompute", href: "/panel/recompute" },

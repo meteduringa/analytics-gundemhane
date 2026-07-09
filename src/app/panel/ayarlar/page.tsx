@@ -21,203 +21,27 @@ const buildExternalSnippet = (websiteId: string, hostUrl: string) => `<script as
   data-host-url="${hostUrl}">
 </script>`;
 
+const buildBikTestSnippet = (websiteId: string, hostUrl: string) => `<script async fetchpriority="low" src="${hostUrl}/bik-tracker.js"
+  data-site-id="${websiteId}"
+  data-host-url="${hostUrl}">
+</script>`;
+
 const buildInlineSnippet = (websiteId: string, hostUrl: string) => `<script data-site-id="${websiteId}" data-host-url="${hostUrl}">
 (function () {
   var s = document.currentScript;
   if (!s) return;
 
   var siteId = s.getAttribute("data-site-id") || s.getAttribute("data-website-id");
-  var hostUrl = s.getAttribute("data-host-url") || "";
-  if (!siteId || !hostUrl) return;
+  var trackerHost = (s.getAttribute("data-host-url") || "").replace(/\\/+$/, "");
+  if (!siteId || !trackerHost) return;
 
-  var endpoint = hostUrl.replace(/\\/$/, "") + "/api/collect";
-  var sessionCookie = "session_id";
-  var visitorCookie = "visitor_id";
-  var sessionTtlSeconds = 1800;
-  var visitorTtlSeconds = 31536000;
-  var pingStages = [1, 5, 10];
-  var pingIntervalSeconds = 10;
-
-  function uuid() {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (ch) {
-      var rand = (Math.random() * 16) | 0;
-      var value = ch === "x" ? rand : (rand & 3) | 8;
-      return value.toString(16);
-    });
-  }
-
-  function getCookie(name) {
-    var match = document.cookie.split("; ").find(function (row) {
-      return row.indexOf(name + "=") === 0;
-    });
-    if (!match) return null;
-    return match.split("=")[1] || null;
-  }
-
-  function setCookie(name, value, maxAgeSeconds) {
-    document.cookie = name + "=" + value + "; Max-Age=" + maxAgeSeconds + "; Path=/; SameSite=Lax";
-  }
-
-  function getVisitorId() {
-    var id = getCookie(visitorCookie);
-    if (!id) {
-      id = uuid();
-      setCookie(visitorCookie, id, visitorTtlSeconds);
-    }
-    return id;
-  }
-
-  function getSessionId() {
-    var id = getCookie(sessionCookie);
-    if (!id) {
-      id = "session_" + uuid();
-    }
-    setCookie(sessionCookie, id, sessionTtlSeconds);
-    return id;
-  }
-
-  function getCountryHint() {
-    try {
-      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-      if (tz === "Europe/Istanbul") return "TR";
-    } catch (e) {}
-    var lang = (navigator.language || "").toLowerCase();
-    if (lang.indexOf("tr") === 0) return "TR";
-    return "";
-  }
-
-  function sendPayload(payload) {
-    if (navigator.onLine === false) return;
-    var body = JSON.stringify({
-      website_id: siteId,
-      visitor_id: getVisitorId(),
-      session_id: getSessionId(),
-      ts: Date.now(),
-      screen: screen.width + "x" + screen.height,
-      language: navigator.language || "",
-      countryCode: getCountryHint(),
-      "user-agent": navigator.userAgent,
-      type: payload.type,
-      event_name: payload.event_name,
-      event_data: payload.event_data,
-      url: payload.url,
-      referrer: payload.referrer,
-    });
-
-    var sent = false;
-    try {
-      if (navigator.sendBeacon) {
-        sent = navigator.sendBeacon(endpoint, body);
-      }
-    } catch (e) {}
-    if (sent) return;
-    if (typeof AbortController === "undefined") {
-      fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: body,
-        keepalive: true,
-        credentials: "omit",
-      }).catch(function () {});
-      return;
-    }
-    var controller = new AbortController();
-    var timeoutId = setTimeout(function () { controller.abort(); }, 3000);
-    fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: body,
-      keepalive: true,
-      credentials: "omit",
-      signal: controller.signal,
-    })
-      .catch(function () {})
-      .finally(function () { clearTimeout(timeoutId); });
-  }
-
-  var pingTimeouts = [];
-  var pingInterval = null;
-  var lastPageviewTs = null;
-  var lastUrl = location.pathname + location.search;
-
-  function clearPingTimers() {
-    pingTimeouts.forEach(function (timer) { clearTimeout(timer); });
-    pingTimeouts = [];
-    if (pingInterval) {
-      clearInterval(pingInterval);
-      pingInterval = null;
-    }
-  }
-
-  function sendPing(elapsedSeconds) {
-    sendPayload({
-      type: "event",
-      event_name: "ping",
-      event_data: { pageviewTs: lastPageviewTs, elapsedSeconds: elapsedSeconds },
-      url: location.pathname + location.search,
-      referrer: document.referrer || null,
-    });
-  }
-
-  function schedulePings() {
-    clearPingTimers();
-    pingStages.forEach(function (seconds) {
-      var timer = setTimeout(function () { sendPing(seconds); }, seconds * 1000);
-      pingTimeouts.push(timer);
-    });
-    var startInterval = setTimeout(function () {
-      pingInterval = setInterval(function () {
-        if (!lastPageviewTs) return;
-        var elapsedSeconds = Math.floor((Date.now() - lastPageviewTs) / 1000);
-        sendPing(elapsedSeconds);
-      }, pingIntervalSeconds * 1000);
-    }, pingIntervalSeconds * 1000);
-    pingTimeouts.push(startInterval);
-  }
-
-  function trackPageview() {
-    lastPageviewTs = Date.now();
-    sendPayload({
-      type: "pageview",
-      url: location.pathname + location.search,
-      referrer: document.referrer || null,
-    });
-    schedulePings();
-  }
-
-  function handleRouteChange() {
-    var currentUrl = location.pathname + location.search;
-    if (currentUrl === lastUrl) return;
-    lastUrl = currentUrl;
-    clearPingTimers();
-    trackPageview();
-  }
-
-  var originalPushState = history.pushState;
-  var originalReplaceState = history.replaceState;
-
-  history.pushState = function () {
-    originalPushState.apply(this, arguments);
-    handleRouteChange();
-  };
-  history.replaceState = function () {
-    originalReplaceState.apply(this, arguments);
-    handleRouteChange();
-  };
-
-  addEventListener("popstate", handleRouteChange);
-  addEventListener("beforeunload", function () {
-    if (!lastPageviewTs) return;
-    var elapsedSeconds = Math.floor((Date.now() - lastPageviewTs) / 1000);
-    sendPing(Math.max(elapsedSeconds, 1));
-    clearPingTimers();
-  });
-
-  if (document.readyState === "complete") {
-    trackPageview();
-  } else {
-    addEventListener("load", trackPageview, { once: true });
-  }
+  var tracker = document.createElement("script");
+  tracker.async = true;
+  tracker.setAttribute("fetchpriority", "low");
+  tracker.src = trackerHost + "/simple-tracker.js";
+  tracker.setAttribute("data-site-id", siteId);
+  tracker.setAttribute("data-host-url", trackerHost);
+  s.parentNode.insertBefore(tracker, s.nextSibling);
 })();
 </script>`;
 
@@ -238,6 +62,7 @@ const SettingsPage = () => {
   const [error, setError] = useState("");
   const [snippet, setSnippet] = useState("");
   const [inlineSnippet, setInlineSnippet] = useState("");
+  const [bikSnippet, setBikSnippet] = useState("");
   const [sites, setSites] = useState<
     {
       id: string;
@@ -248,7 +73,7 @@ const SettingsPage = () => {
     }[]
   >([]);
   const [sitesLoading, setSitesLoading] = useState(false);
-  const [copied, setCopied] = useState<"external" | "inline" | null>(null);
+  const [copied, setCopied] = useState<"external" | "inline" | "bik" | null>(null);
   const [hostUrl, setHostUrl] = useState(fallbackHostUrl);
 
   useEffect(() => {
@@ -289,7 +114,7 @@ const SettingsPage = () => {
       }
     };
     loadSites();
-  }, [user]);
+  }, [router, user]);
 
   const normalizedDomain = useMemo(() => {
     if (!siteUrl) return "";
@@ -333,8 +158,10 @@ const SettingsPage = () => {
       const websiteId = payload.website.id as string;
       const external = buildExternalSnippet(websiteId, hostUrl);
       const inline = buildInlineSnippet(websiteId, hostUrl);
+      const bik = buildBikTestSnippet(websiteId, hostUrl);
       setSnippet(external);
       setInlineSnippet(inline);
+      setBikSnippet(bik);
       setSites((prev) => [payload.website, ...prev]);
       setSiteName("");
       setSiteUrl("");
@@ -347,7 +174,7 @@ const SettingsPage = () => {
 
   const handleCopy = async (
     value: string,
-    mode: "external" | "inline"
+    mode: "external" | "inline" | "bik"
   ) => {
     if (!value) return;
     try {
@@ -472,9 +299,9 @@ const SettingsPage = () => {
                   : "border-slate-200/70 bg-slate-50 text-slate-600"
               }`}
             >
-              <p className="font-semibold">Inline Script (CSP)</p>
+              <p className="font-semibold">Inline Loader</p>
               <p className="mt-1 text-slate-500">
-                CSP varsa inline kodu buradan kopyala.
+                Mevcut eski takip dosyasını inline loader ile yükler.
               </p>
               <pre className="mt-3 whitespace-pre-wrap rounded-xl bg-white p-3 text-[11px] text-slate-700">
                 {inlineSnippet || "Inline snippet burada görünecek."}
@@ -486,6 +313,29 @@ const SettingsPage = () => {
                 disabled={!inlineSnippet}
               >
                 {copied === "inline" ? (
+                  <ClipboardCheck className="h-3 w-3" />
+                ) : (
+                  <Clipboard className="h-3 w-3" />
+                )}
+                Kopyala
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">
+              <p className="font-semibold">BİK Test Script</p>
+              <p className="mt-1 text-emerald-700">
+                Yeni BİK uyumlu takip kodu. Eski veriyi bozmaz, ayrı havuza yazar.
+              </p>
+              <pre className="mt-3 whitespace-pre-wrap rounded-xl bg-white p-3 text-[11px] text-emerald-900">
+                {bikSnippet || "BİK test snippet burada görünecek."}
+              </pre>
+              <button
+                type="button"
+                onClick={() => handleCopy(bikSnippet, "bik")}
+                className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-semibold text-emerald-700"
+                disabled={!bikSnippet}
+              >
+                {copied === "bik" ? (
                   <ClipboardCheck className="h-3 w-3" />
                 ) : (
                   <Clipboard className="h-3 w-3" />
@@ -551,6 +401,16 @@ const SettingsPage = () => {
                     >
                       <Clipboard className="h-3 w-3" />
                       Inline Kopyala
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopy(buildBikTestSnippet(site.id, hostUrl), "bik")
+                      }
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 font-semibold text-emerald-700"
+                    >
+                      <Clipboard className="h-3 w-3" />
+                      BİK Test Kopyala
                     </button>
                   </div>
                 </div>

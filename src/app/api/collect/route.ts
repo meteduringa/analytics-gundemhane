@@ -131,6 +131,23 @@ import { maybeRunClickaduEventStop } from "@/lib/clickadu-event-stop";
   };
   const hashKey = (value: string) =>
     crypto.createHash("sha256").update(value).digest("hex");
+  const randomId = () => crypto.randomUUID();
+  const asNumber = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const asBoolean = (value: unknown) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const lowered = value.toLowerCase();
+      if (["true", "1", "yes"].includes(lowered)) return true;
+      if (["false", "0", "no"].includes(lowered)) return false;
+    }
+    if (typeof value === "number") return value !== 0;
+    return null;
+  };
+  const dataValue = (eventData: unknown, key: string) =>
+    isPlainObject(eventData) ? eventData[key] : undefined;
 
   export async function OPTIONS(request: Request) {
     return new NextResponse(null, {
@@ -290,6 +307,36 @@ import { maybeRunClickaduEventStop } from "@/lib/clickadu-event-stop";
     })();
     const strictHostname = asString(payload.hostname);
     const strictNormalizedUrl = isStrict ? normalizeStrictUrl(url) : url;
+    const strictSessionId =
+      asString(payload.session_id) ??
+      asString(payload.sessionId) ??
+      asString(dataValue(eventData, "sessionId")) ??
+      visitorId;
+    const strictEventId =
+      asString(payload.event_id) ??
+      asString(payload.eventId) ??
+      asString(dataValue(eventData, "eventId")) ??
+      (isStrictPageview ? randomId() : null);
+    const strictActiveSeconds =
+      asNumber(payload.activeSeconds) ??
+      asNumber(payload.active_seconds) ??
+      asNumber(dataValue(eventData, "activeSeconds")) ??
+      asNumber(dataValue(eventData, "elapsedSeconds"));
+    const strictIsBot =
+      asBoolean(payload.isBot) ??
+      asBoolean(payload.is_bot) ??
+      asBoolean(dataValue(eventData, "isBot")) ??
+      false;
+    const strictTd =
+      asNumber(payload.td) ?? asNumber(dataValue(eventData, "td")) ?? 0;
+    const strictPageviewTs =
+      asNumber(payload.pageviewTs) ??
+      asNumber(dataValue(eventData, "pageviewTs"));
+    const strictInteractionCount =
+      asNumber(payload.interactionCount) ??
+      asNumber(dataValue(eventData, "interactionCount"));
+    const strictAuth = asString(payload.auth);
+    const strictFingerprint = asString(payload.fingerprint) ?? visitorId;
 
     const createdAt = new Date();
     const dayKey = istanbulDayString(createdAt);
@@ -316,7 +363,15 @@ import { maybeRunClickaduEventStop } from "@/lib/clickadu-event-stop";
           60 * 60 * 48
         );
         return NextResponse.json(
-          { ok: true },
+          {
+            ok: true,
+            distinctId: visitorId,
+            sessionId: strictSessionId,
+            eventId: strictEventId,
+            isBot: strictIsBot,
+            td: strictTd,
+            deduped: true,
+          },
           { status: 200, headers: corsHeaders(origin) }
         );
       }
@@ -329,20 +384,43 @@ import { maybeRunClickaduEventStop } from "@/lib/clickadu-event-stop";
     );
     const countryCode = getCountryCode(request.headers) ?? payloadCountry;
     const fallbackEventName = isStrictPing ? "ping" : undefined;
+    const strictBaseEventData = {
+      ...(isPlainObject(enrichedEventData) ? enrichedEventData : {}),
+      hostname: strictHostname ?? undefined,
+      eventId: strictEventId ?? undefined,
+      sessionId: strictSessionId,
+      pageviewTs: strictPageviewTs ?? undefined,
+      activeSeconds: strictActiveSeconds ?? undefined,
+      elapsedSeconds:
+        isStrictPing && strictActiveSeconds != null
+          ? strictActiveSeconds
+          : undefined,
+      isBot: strictIsBot,
+      td: strictTd,
+      auth: strictAuth ?? undefined,
+      fingerprint: strictFingerprint,
+      interactionCount: strictInteractionCount ?? undefined,
+      routeChange:
+        payload.is_route_change === true ||
+        payload.is_route_change === "true" ||
+        payload.is_route_change === "1" ||
+        dataValue(eventData, "routeChange") === true ||
+        undefined,
+      trackerVersion:
+        asString(payload.tracker_version) ??
+        asString(dataValue(eventData, "trackerVersion")) ??
+        undefined,
+      ...(sourceWebsiteId ? { source_website_id: sourceWebsiteId } : {}),
+    };
     const event = await prisma.analyticsEvent.create({
       data: {
         websiteId,
         type: eventType,
         mode: isStrict ? "BIK_STRICT" : "RAW",
         eventName: asString(payload.event_name) ?? fallbackEventName,
-        eventData: isStrictPageview
-          ? {
-              hostname: strictHostname ?? undefined,
-              ...(sourceWebsiteId ? { source_website_id: sourceWebsiteId } : {}),
-            }
-          : enrichedEventData,
+        eventData: isStrict ? strictBaseEventData : enrichedEventData,
         visitorId,
-        sessionId: isStrict ? visitorId : sessionId,
+        sessionId: isStrict ? strictSessionId : sessionId,
         url: strictNormalizedUrl,
         referrer: isStrict ? asStringAllowEmpty(payload.referrer) : asString(payload.referrer),
         screen: asString(payload.screen),
@@ -449,7 +527,16 @@ import { maybeRunClickaduEventStop } from "@/lib/clickadu-event-stop";
     }
 
     return NextResponse.json(
-      { ok: true },
+      isStrictPageview
+        ? {
+            ok: true,
+            distinctId: visitorId,
+            sessionId: strictSessionId,
+            eventId: strictEventId,
+            isBot: strictIsBot,
+            td: strictTd,
+          }
+        : { ok: true },
       { status: 200, headers: corsHeaders(origin) }
     );
   }
