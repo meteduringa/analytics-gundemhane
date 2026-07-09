@@ -1,7 +1,8 @@
-  import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRedis } from "@/lib/redis";
 import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
+import { maybeRunClickaduEventStop } from "@/lib/clickadu-event-stop";
   import crypto from "crypto";
 
   export const runtime = "nodejs";
@@ -428,6 +429,19 @@ import { getCountryCode, normalizeCountryCode } from "@/lib/bik-rules";
         })
       );
       await redis.lTrim(`analytics:stream:${websiteId}`, 0, 199);
+
+      try {
+        await maybeRunClickaduEventStop({
+          redis,
+          websiteId,
+          eventType,
+          eventData: enrichedEventData,
+          visitorId,
+          createdAt,
+        });
+      } catch {
+        // Stop kontrolü reklam kapatma içindir; analytics event kaydını bozmaz.
+      }
     }
 
     return NextResponse.json(

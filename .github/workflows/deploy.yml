@@ -76,6 +76,10 @@ jobs:
               -e TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}' \
               -e TELEGRAM_DEFAULT_CHAT_ID='${{ secrets.TELEGRAM_DEFAULT_CHAT_ID }}' \
               -e TELEGRAM_WEBHOOK_SECRET='${{ secrets.TELEGRAM_WEBHOOK_SECRET }}' \
+              -e CLICKADU_EVENT_STOP_ENABLED='1' \
+              -e CLICKADU_EVENT_STOP_DRY_RUN='0' \
+              -e CLICKADU_API_TOKEN='${{ secrets.CLICKADU_API_TOKEN }}' \
+              -e CLICKADU_EVENT_STOP_SECRET='${{ secrets.CLICKADU_EVENT_STOP_SECRET }}' \
               -e TZ='Europe/Istanbul' \
               analytics-app:latest \
               npm start
