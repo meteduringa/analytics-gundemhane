@@ -6,6 +6,8 @@ export type ClickaduEventStopRule = {
   landingPath?: string;
   targetUrl?: string;
   stopTarget: number;
+  baselineClean?: number;
+  baselineAt?: string;
   status: "active" | "paused";
   source?: string;
   updatedAt?: string;
@@ -49,6 +51,11 @@ const positiveInteger = (value: unknown) => {
   return Number.isFinite(number) && number > 0 ? number : 0;
 };
 
+const nonNegativeInteger = (value: unknown) => {
+  const number = Math.floor(Number(value ?? 0));
+  return Number.isFinite(number) && number > 0 ? number : 0;
+};
+
 const istanbulDayString = (date: Date) =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Istanbul",
@@ -72,6 +79,7 @@ export function normalizeClickaduEventStopRule(input: unknown): ClickaduEventSto
   const campaignId = asString(input.campaignId);
   const trackingCode = asString(input.trackingCode || input.pcCat || input.pc_cat);
   const stopTarget = positiveInteger(input.stopTarget || input.cleanTarget || input.target);
+  const baselineClean = nonNegativeInteger(input.baselineClean ?? input.currentClean ?? input.cleanUnique);
   if (!/^\d{5,}$/.test(campaignId) || !trackingCode || !stopTarget) return null;
   const rawStatus = asString(input.status || "active").toLowerCase();
   return {
@@ -82,6 +90,8 @@ export function normalizeClickaduEventStopRule(input: unknown): ClickaduEventSto
     landingPath: asString(input.landingPath) || undefined,
     targetUrl: asString(input.targetUrl) || undefined,
     stopTarget,
+    baselineClean,
+    baselineAt: asString(input.baselineAt) || undefined,
     status: rawStatus === "paused" ? "paused" : "active",
     source: asString(input.source) || "event-stop-sync",
     updatedAt: asString(input.updatedAt) || new Date().toISOString(),
@@ -187,19 +197,21 @@ export async function maybeRunClickaduEventStop(input: EventStopInput) {
   const visitorsKey = visitorSetKey(day, rule);
   await input.redis.sAdd(visitorsKey, input.visitorId);
   await input.redis.expire(visitorsKey, VISITOR_TTL_SECONDS);
-  const clean = await input.redis.sCard(visitorsKey);
+  const liveClean = await input.redis.sCard(visitorsKey);
+  const baselineClean = rule.baselineClean || 0;
+  const clean = baselineClean + liveClean;
   if (clean < rule.stopTarget) {
-    return { ok: true, action: "watch", clean, target: rule.stopTarget, campaignId: rule.campaignId };
+    return { ok: true, action: "watch", clean, liveClean, baselineClean, target: rule.stopTarget, campaignId: rule.campaignId };
   }
 
   const alreadyStopped = await input.redis.get(stoppedKey(day, rule.campaignId));
   if (alreadyStopped) {
-    return { ok: true, action: "already-stopped", clean, target: rule.stopTarget, campaignId: rule.campaignId };
+    return { ok: true, action: "already-stopped", clean, liveClean, baselineClean, target: rule.stopTarget, campaignId: rule.campaignId };
   }
 
   const locked = await input.redis.set(lockKey(rule.campaignId), "1", { NX: true, PX: 120_000 });
   if (!locked) {
-    return { ok: true, action: "stop-lock-held", clean, target: rule.stopTarget, campaignId: rule.campaignId };
+    return { ok: true, action: "stop-lock-held", clean, liveClean, baselineClean, target: rule.stopTarget, campaignId: rule.campaignId };
   }
 
   const baseLog = {
@@ -209,6 +221,8 @@ export async function maybeRunClickaduEventStop(input: EventStopInput) {
     siteKey: rule.siteKey || "",
     websiteId: input.websiteId,
     clean,
+    liveClean,
+    baselineClean,
     target: rule.stopTarget,
     day,
   };
