@@ -26,6 +26,7 @@ const CAMPAIGN_KEYS = new Set([
   "_openstat",
   "pc_source",
   "pc_cat",
+  "ec",
 ]);
 
 const hasCampaignParams = (value: string) => {
@@ -51,7 +52,8 @@ const hasCampaignParams = (value: string) => {
       lowered.includes("yclid=") ||
       lowered.includes("_openstat=") ||
       lowered.includes("pc_source=") ||
-      lowered.includes("pc_cat=")
+      lowered.includes("pc_cat=") ||
+      lowered.includes("ec=")
     );
   }
 };

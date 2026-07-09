@@ -93,6 +93,10 @@ import { maybeRunClickaduEventStop } from "@/lib/clickadu-event-stop";
       if (clickaduCode) {
         return { pc_source: "clickadu", pc_cat: clickaduCode };
       }
+      const clickaduEcCode = parsed.searchParams.get("ec");
+      if (clickaduEcCode) {
+        return { pc_source: "clickadu", pc_cat: clickaduEcCode };
+      }
       const popcentCode = parsed.searchParams.get("p");
       if (popcentCode) {
         return { pc_source: "popcent", pc_cat: popcentCode };

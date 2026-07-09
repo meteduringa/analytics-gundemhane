@@ -165,10 +165,27 @@ export async function GET(request: Request) {
     `);
   }
   if (pcCat) {
-    conditions.push(Prisma.sql`e."eventData"->>'pc_cat' = ${pcCat}`);
+    conditions.push(Prisma.sql`
+      (
+        e."eventData"->>'pc_cat' = ${pcCat}
+        OR COALESCE(NULLIF(substring(e."url" from '[?&]ec=([^&#]+)'), ''), '') = ${pcCat}
+        OR COALESCE(NULLIF(substring(e."url" from '[?&]pc_cat=([^&#]+)'), ''), '') = ${pcCat}
+        OR COALESCE(NULLIF(substring(e."url" from '[?&]c=([^&#]+)'), ''), '') = ${pcCat}
+      )
+    `);
   }
   if (pcSource) {
-    conditions.push(Prisma.sql`e."eventData"->>'pc_source' = ${pcSource}`);
+    if (pcSource === "clickadu" && pcCat) {
+      conditions.push(Prisma.sql`
+        (
+          e."eventData"->>'pc_source' = 'clickadu'
+          OR COALESCE(NULLIF(substring(e."url" from '[?&]ec=([^&#]+)'), ''), '') = ${pcCat}
+          OR COALESCE(NULLIF(substring(e."url" from '[?&]c=([^&#]+)'), ''), '') = ${pcCat}
+        )
+      `);
+    } else {
+      conditions.push(Prisma.sql`e."eventData"->>'pc_source' = ${pcSource}`);
+    }
   }
 
   if (startDate) {
