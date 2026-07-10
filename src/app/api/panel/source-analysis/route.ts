@@ -44,6 +44,18 @@ const parseFilterDate = (value: string | null, endOfDay = false) => {
   return parsed;
 };
 
+const parseMinuteDate = (value: string | null, endOfMinute = false) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(trimmed);
+  if (!match) return null;
+  const [, day, hour, minute] = match;
+  const iso = `${day}T${hour}:${minute}:${endOfMinute ? "59" : "00"}+03:00`;
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
 const normalizeLandingUrl = (value: string | null) => {
   if (!value) return null;
   try {
@@ -93,6 +105,14 @@ export async function GET(request: Request) {
   const websiteId = searchParams.get("websiteId");
   const startValue = searchParams.get("start");
   const endValue = searchParams.get("end");
+  const startMinuteValue =
+    searchParams.get("startMinute") ??
+    searchParams.get("from") ??
+    null;
+  const endMinuteValue =
+    searchParams.get("endMinute") ??
+    searchParams.get("to") ??
+    null;
   const landingUrlRaw = searchParams.get("landingUrl");
   const popcentOnly = searchParams.get("popcentOnly") !== "0";
   const pcCat = searchParams.get("pcCat")?.trim() || null;
@@ -132,6 +152,28 @@ export async function GET(request: Request) {
   if (startDate && endDate && startDate > endDate) {
     return NextResponse.json(
       { error: "Başlangıç tarihi bitiş tarihinden büyük olamaz." },
+      { status: 400 }
+    );
+  }
+  const startMinuteDate = parseMinuteDate(startMinuteValue);
+  const endMinuteDate = parseMinuteDate(endMinuteValue, true);
+  if (startMinuteValue && !startMinuteDate) {
+    return NextResponse.json(
+      { error: "Başlangıç dakika filtresi geçersiz." },
+      { status: 400 }
+    );
+  }
+  if (endMinuteValue && !endMinuteDate) {
+    return NextResponse.json(
+      { error: "Bitiş dakika filtresi geçersiz." },
+      { status: 400 }
+    );
+  }
+  const effectiveStartDate = startMinuteDate ?? startDate;
+  const effectiveEndDate = endMinuteDate ?? endDate;
+  if (effectiveStartDate && effectiveEndDate && effectiveStartDate > effectiveEndDate) {
+    return NextResponse.json(
+      { error: "Başlangıç filtresi bitiş filtresinden büyük olamaz." },
       { status: 400 }
     );
   }
@@ -188,11 +230,11 @@ export async function GET(request: Request) {
     }
   }
 
-  if (startDate) {
-    conditions.push(Prisma.sql`e."createdAt" >= ${startDate}`);
+  if (effectiveStartDate) {
+    conditions.push(Prisma.sql`e."createdAt" >= ${effectiveStartDate}`);
   }
-  if (endDate) {
-    conditions.push(Prisma.sql`e."createdAt" <= ${endDate}`);
+  if (effectiveEndDate) {
+    conditions.push(Prisma.sql`e."createdAt" <= ${effectiveEndDate}`);
   }
   if (landingPath) {
     conditions.push(
@@ -209,11 +251,11 @@ export async function GET(request: Request) {
       Prisma.sql`ce."mode" = 'RAW'`,
     ];
 
-    if (startDate) {
-      chainConditions.push(Prisma.sql`ce."createdAt" >= ${startDate}`);
+    if (effectiveStartDate) {
+      chainConditions.push(Prisma.sql`ce."createdAt" >= ${effectiveStartDate}`);
     }
-    if (endDate) {
-      chainConditions.push(Prisma.sql`ce."createdAt" <= ${endDate}`);
+    if (effectiveEndDate) {
+      chainConditions.push(Prisma.sql`ce."createdAt" <= ${effectiveEndDate}`);
     }
     chainConditions.push(
       Prisma.sql`rtrim(split_part(ce."url", '?', 1), '/') = rtrim(${landingPath}, '/')`
