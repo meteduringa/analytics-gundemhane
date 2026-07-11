@@ -37,6 +37,7 @@ jobs:
               run_sudo systemctl start analytics-alert.service >/dev/null 2>&1 || true
             }
             trap cleanup EXIT
+            rm -f "$HOME/.gitconfig.lock" || true
             git config --global --add safe.directory /opt/analytics
             cd /opt/analytics
             git fetch origin main
