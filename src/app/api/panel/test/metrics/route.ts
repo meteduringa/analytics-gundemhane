@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readPanelSession } from "@/lib/panel-session";
+import { computeBikReferenceMetrics } from "@/lib/bik-reference-model";
 import {
   istanbulDayString,
   readEventsForDay,
@@ -15,6 +16,20 @@ export const dynamic = "force-dynamic";
 
 const sameDay = (event: BikTestStoredEvent, day: string) =>
   istanbulDayString(new Date(event.ts)) === day;
+
+const payloadString = (
+  payload: Record<string, unknown>,
+  key: string
+) => {
+  const value = payload[key];
+  return typeof value === "string" ? value : value == null ? null : String(value);
+};
+
+const referenceEventId = (event: BikTestStoredEvent) =>
+  event.eventId || payloadString(event.payload, "pageViewEvent");
+
+const visitorKey = (event: BikTestStoredEvent) =>
+  event.visitorId || event.fingerprint || event.ipHash || event.id;
 
 export async function GET(request: Request) {
   const session = await readPanelSession();
@@ -57,33 +72,37 @@ export async function GET(request: Request) {
       (event.siteId === site.id || event.websiteId === site.websiteId || event.websiteId === site.legacyWebsiteId) &&
       sameDay(event, day)
   );
-  const countedPageviews = siteEvents.filter(
-    (event) => event.isPageview && !event.isBot
+  const referenceMetrics = computeBikReferenceMetrics(
+    siteEvents
+      .filter((event) => event.isPageview || event.isHeartbeat)
+      .map((event) =>
+        event.isPageview
+          ? {
+              eventType: "pageview" as const,
+              siteId: event.siteId,
+              visitorId: visitorKey(event),
+              sessionId: event.sessionId,
+              eventId: referenceEventId(event),
+              url: event.url || "/",
+              referrer: event.referrer,
+              ts: event.ts,
+              activeSeconds: event.activeSeconds,
+              isBot: event.isBot,
+            }
+          : {
+              eventType: "check" as const,
+              siteId: event.siteId,
+              visitorId: event.visitorId || null,
+              sessionId: event.sessionId,
+              eventId: referenceEventId(event),
+              url: event.url,
+              ts: event.ts,
+              activeSeconds: event.activeSeconds,
+              isBot: event.isBot,
+            }
+      ),
+    { minimumActiveSeconds: 1 }
   );
-  const uniqueVisitors = new Set(
-    countedPageviews.map((event) => event.visitorId || event.fingerprint || event.ipHash)
-  );
-  const directVisitors = new Set(
-    countedPageviews
-      .filter((event) => event.isDirect)
-      .map((event) => event.visitorId || event.fingerprint || event.ipHash)
-  );
-  const sessions = new Set(
-    siteEvents.map((event) => event.sessionId).filter(Boolean)
-  );
-  const activeBySession = new Map<string, number>();
-  for (const event of siteEvents) {
-    const key = event.sessionId || event.visitorId || event.id;
-    const current = activeBySession.get(key) || 0;
-    activeBySession.set(key, Math.max(current, event.activeSeconds || 0));
-  }
-  const activeSeconds = [...activeBySession.values()].reduce(
-    (sum, value) => sum + value,
-    0
-  );
-  const avgActiveSeconds = uniqueVisitors.size
-    ? Math.round(activeSeconds / uniqueVisitors.size)
-    : 0;
   const recent = [...recentSiteEvents, ...recentSiteRejections]
     .sort((a, b) => b.ts.localeCompare(a.ts))
     .slice(0, 30);
@@ -95,17 +114,18 @@ export async function GET(request: Request) {
     metrics: {
       accepted: siteEvents.length,
       rejected: siteRejections.length,
-      pageviews: countedPageviews.length,
+      pageviews: referenceMetrics.daily_pageviews,
       rawPageviews: siteEvents.filter((event) => event.isPageview).length,
-      uniqueVisitors: uniqueVisitors.size,
-      directUniqueVisitors: directVisitors.size,
-      sessions: sessions.size,
+      uniqueVisitors: referenceMetrics.daily_unique_visitors,
+      directUniqueVisitors: referenceMetrics.daily_direct_unique_visitors,
+      sessions: referenceMetrics.daily_sessions,
       heartbeats: siteEvents.filter((event) => event.isHeartbeat).length,
       customEvents: siteEvents.filter(
         (event) => !event.isPageview && !event.isHeartbeat
       ).length,
       botEvents: siteEvents.filter((event) => event.isBot).length,
-      avgActiveSeconds,
+      avgActiveSeconds: referenceMetrics.daily_avg_time_on_site_seconds,
+      diagnostics: referenceMetrics.diagnostics,
     },
     recent,
   });

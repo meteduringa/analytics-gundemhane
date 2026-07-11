@@ -48,6 +48,7 @@ export type BikTestStoredEvent = BikTestEventInput & {
   isDirect: boolean;
   isPageview: boolean;
   isHeartbeat: boolean;
+  botReasons: string[];
   ts: string;
   ipHash: string;
 };
@@ -244,6 +245,107 @@ const asNumber = (value: unknown) => {
 const truthy = (value: unknown) =>
   value === true || value === "true" || value === "1" || value === 1;
 
+const stringValue = (value: unknown) =>
+  value === null || value === undefined ? "" : String(value);
+
+const SEARCH_REFERRERS = [
+  "google.",
+  "bing.com",
+  "yandex.",
+  "duckduckgo.",
+  "search.yahoo.",
+  "baidu.",
+  "com.google.android.googlequicksearchbox",
+];
+
+const TRACKING_PARAMS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "fbclid",
+  "gclid",
+  "yclid",
+  "ref",
+];
+
+const hasTrackingParams = (url: string | null | undefined) => {
+  try {
+    const parsed = new URL(url || "/", "https://example.com");
+    return TRACKING_PARAMS.some((param) => parsed.searchParams.has(param));
+  } catch {
+    return false;
+  }
+};
+
+const isHomeUrl = (url: string | null | undefined) => {
+  try {
+    const parsed = new URL(url || "/", "https://example.com");
+    return parsed.pathname === "/" || parsed.pathname === "/index.html";
+  } catch {
+    const path = String(url || "/").split("#")[0] || "/";
+    return path === "/" || path === "/index.html" || path.startsWith("/?");
+  }
+};
+
+export const isBikLikeDirectLanding = (
+  referrer: string | null | undefined,
+  url: string | null | undefined,
+  hostname?: string | null
+) => {
+  const refHost = extractHostname(referrer);
+  if (!refHost) return !hasTrackingParams(url);
+
+  const normalizedRefHost = normalizeHost(refHost);
+  const normalizedPageHost = hostname ? normalizeHost(hostname) : "";
+  if (normalizedPageHost && normalizedRefHost === normalizedPageHost) {
+    return false;
+  }
+
+  return (
+    SEARCH_REFERRERS.some((engine) => normalizedRefHost.includes(engine)) &&
+    isHomeUrl(url)
+  );
+};
+
+const botAnalysis = (payload: Record<string, unknown>) => {
+  const reasons: string[] = [];
+  const automationTool = stringValue(payload.automationTool);
+  const userAgent = stringValue(payload.userAgent ?? payload["user-agent"]);
+  const outerWidth = asNumber(payload.outerWidth);
+  const outerHeight = asNumber(payload.outerHeight);
+  const cpuCore = asNumber(payload.cpuCore ?? payload.hardwareConcurrency);
+  const deviceMemory = asNumber(payload.deviceMemory);
+  const languagesLength = asNumber(payload.languagesLength);
+
+  if (truthy(payload.isBot)) reasons.push("payload-is-bot");
+  if (truthy(payload.webdriver)) reasons.push("webdriver");
+  if (truthy(payload.headless) || truthy(payload.isHeadless)) {
+    reasons.push("headless");
+  }
+  if (truthy(payload.isPuppeteer)) reasons.push("puppeteer");
+  if (truthy(payload.isPlaywright)) reasons.push("playwright");
+  if (automationTool && automationTool !== "undefined") {
+    reasons.push(`automation:${automationTool}`);
+  }
+  if (outerWidth === 0 || outerHeight === 0) reasons.push("zero-viewport");
+  if (/Headless|PhantomJS|Puppeteer|Playwright|Cypress/i.test(userAgent)) {
+    reasons.push("automation-user-agent");
+  }
+
+  const weakSignals = [
+    truthy(payload.hasUndetectedBehavior),
+    languagesLength === 0,
+    cpuCore !== null && cpuCore > 64,
+    deviceMemory !== null && deviceMemory > 64,
+  ].filter(Boolean).length;
+
+  if (weakSignals >= 2) reasons.push("multiple-weak-bot-signals");
+
+  return { isBot: reasons.length > 0, reasons };
+};
+
 export const normalizeEventPayload = (
   payload: Record<string, unknown>,
   version: "v1" | "v2",
@@ -260,36 +362,59 @@ export const normalizeEventPayload = (
   fingerprint: asString(payload.fingerprint),
   type: asString(payload.type ?? payload.tag),
   name: asString(payload.name ?? payload.event_name),
-  eventId: asString(payload.eventId ?? payload.eid),
-  activeSeconds: asNumber(payload.activeSeconds),
+  eventId: asString(payload.eventId ?? payload.eid ?? payload.pageViewEvent),
+  activeSeconds: asNumber(payload.activeSeconds ?? payload.td),
   screen: asString(payload.screen),
   language: asString(payload.language),
   userAgent: asString(payload.userAgent ?? payload["user-agent"]),
   botSignals: {
     webdriver: payload.webdriver,
     headless: payload.headless,
+    isHeadless: payload.isHeadless,
+    isPuppeteer: payload.isPuppeteer,
+    isPlaywright: payload.isPlaywright,
+    isBrave: payload.isBrave,
     automationTool: payload.automationTool,
     isBot: payload.isBot,
     outerWidth: payload.outerWidth,
     outerHeight: payload.outerHeight,
+    deviceMemory: payload.deviceMemory,
+    cpuCore: payload.cpuCore ?? payload.hardwareConcurrency,
+    pluginCount: payload.pluginCount,
+    languagesLength: payload.languagesLength,
+    hasWindowChrome: payload.hasWindowChrome,
+    hasUndetectedBehavior: payload.hasUndetectedBehavior,
+    isIframe: payload.isIframe,
+    isPageReloaded: payload.isPageReloaded,
+    isTouchable: payload.isTouchable,
+    maxTouchPoints: payload.maxTouchPoints,
+    scrollWidth: payload.scrollWidth,
+    scrollHeight: payload.scrollHeight,
+    canvas: payload.canvas,
+    webgl: payload.webgl,
+    fontMetrics: payload.fontMetrics,
+    permissionState: payload.permissionState,
   },
   payload,
 });
 
 export const classifyEvent = (event: BikTestEventInput) => {
   const payload = event.payload;
-  const bot =
-    truthy(payload.isBot) ||
-    truthy(payload.webdriver) ||
-    truthy(payload.headless) ||
-    Boolean(payload.automationTool);
+  const bot = botAnalysis(payload);
   const name = String(event.name || "").toLowerCase();
   const endpoint = event.endpoint;
   const isHeartbeat = endpoint === "check" || name.includes("heartbeat");
   const isPageview = !event.name && endpoint !== "check";
-  const referrer = event.referrer || "";
-  const isDirect = !referrer || referrer === event.url;
-  return { isBot: bot, isHeartbeat, isPageview, isDirect };
+  const isDirect = isPageview
+    ? isBikLikeDirectLanding(event.referrer, event.url, event.hostname)
+    : false;
+  return {
+    isBot: bot.isBot,
+    botReasons: bot.reasons,
+    isHeartbeat,
+    isPageview,
+    isDirect,
+  };
 };
 
 export const storeTestEvent = async (
