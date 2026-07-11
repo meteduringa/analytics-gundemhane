@@ -37,6 +37,11 @@ jobs:
               run_sudo systemctl start analytics-alert.service >/dev/null 2>&1 || true
             }
             trap cleanup EXIT
+            docker builder prune -af >/dev/null 2>&1 || true
+            docker container prune -f >/dev/null 2>&1 || true
+            docker image prune -af >/dev/null 2>&1 || true
+            docker system prune -af >/dev/null 2>&1 || true
+            rm -rf /tmp/next-* /tmp/npm-* /tmp/yarn-* >/dev/null 2>&1 || true
             cd /opt/analytics
             git -c safe.directory=/opt/analytics fetch origin main
             git -c safe.directory=/opt/analytics reset --hard origin/main
