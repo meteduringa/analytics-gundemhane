@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "siteId zorunludur." }, { status: 400 });
   }
 
-  const { start } = getIstanbulDayRange(new Date());
+  const { start, dayString } = getIstanbulDayRange(new Date());
   let record = await prisma.analyticsDailySimple.findUnique({
     where: {
       siteId_day: {
@@ -67,7 +67,7 @@ export async function GET(request: Request) {
 
   const payload = {
     siteId,
-    day: start.toISOString().split("T")[0],
+    day: dayString,
     day_start_local: dayStartLocal,
     as_of_local: asOfLocal,
     as_of_utc: now.toISOString(),
