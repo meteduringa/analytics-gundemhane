@@ -121,6 +121,7 @@ export default function PanelTestPage() {
   const [host, setHost] = useState(fallbackHost);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState<"v1" | "v2" | null>(null);
   const [newSite, setNewSite] = useState({ name: "", domain: "" });
@@ -142,13 +143,18 @@ export default function PanelTestPage() {
     };
   }, [host, selectedSite]);
 
-  const loadSites = useCallback(async () => {
+  const loadSites = useCallback(async (preferredSiteId?: string) => {
     const response = await fetch("/api/panel/test/sites", { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Siteler alinamadi.");
     const nextSites = payload.sites as TestSite[];
     setSites(nextSites);
-    setSelectedSiteId((current) => current || nextSites[0]?.id || "");
+    setSelectedSiteId((current) => {
+      const target = preferredSiteId || current;
+      if (target && nextSites.some((site) => site.id === target)) return target;
+      return nextSites[0]?.id || "";
+    });
+    return nextSites;
   }, []);
 
   const loadMetrics = useCallback(async () => {
@@ -232,9 +238,43 @@ export default function PanelTestPage() {
       return;
     }
     setNewSite({ name: "", domain: "" });
-    await loadSites();
+    await loadSites(payload.site.id);
     setSelectedSiteId(payload.site.id);
     setMessage("Test sitesi hazir.");
+  };
+
+  const deleteSelectedSite = async () => {
+    if (!selectedSite || deleting) return;
+    const confirmed = window.confirm(
+      `${selectedSite.name} test sitesini silmek istiyor musun?`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch("/api/panel/test/sites", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteId: selectedSite.id }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setMessage(payload.error || "Test sitesi silinemedi.");
+        return;
+      }
+
+      const nextSites = await loadSites();
+      setMetrics(null);
+      setMessage(
+        nextSites.length
+          ? "Test sitesi silindi. Yeni secili site yuklendi."
+          : "Test sitesi silindi. Yeni site olusturabilirsin."
+      );
+    } catch (error) {
+      setMessage((error as Error).message || "Test sitesi silinemedi.");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const resetData = async () => {
@@ -325,32 +365,48 @@ export default function PanelTestPage() {
             </div>
 
             {selectedSite ? (
-              <div className="mt-5 grid gap-3 text-sm md:grid-cols-2">
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="font-semibold text-slate-500">v1 website id</p>
-                  <p className="mt-1 break-all font-mono text-slate-900">
-                    {selectedSite.legacyWebsiteId}
+              <>
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-500">
+                    {selectedSite.name} / {selectedSite.domain}
                   </p>
+                  <button
+                    type="button"
+                    onClick={deleteSelectedSite}
+                    disabled={deleting}
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deleting ? "Siliniyor" : "Siteyi sil"}
+                  </button>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="font-semibold text-slate-500">v2 website id</p>
-                  <p className="mt-1 break-all font-mono text-slate-900">
-                    {selectedSite.websiteId}
-                  </p>
+                <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="font-semibold text-slate-500">v1 website id</p>
+                    <p className="mt-1 break-all font-mono text-slate-900">
+                      {selectedSite.legacyWebsiteId}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="font-semibold text-slate-500">v2 website id</p>
+                    <p className="mt-1 break-all font-mono text-slate-900">
+                      {selectedSite.websiteId}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="font-semibold text-slate-500">publish code</p>
+                    <p className="mt-1 font-mono text-slate-900">
+                      {selectedSite.publishCode}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="font-semibold text-slate-500">asset</p>
+                    <p className="mt-1 break-all font-mono text-slate-900">
+                      t-1-{selectedSite.domainSlug}-{selectedSite.scriptVersion}.js
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="font-semibold text-slate-500">publish code</p>
-                  <p className="mt-1 font-mono text-slate-900">
-                    {selectedSite.publishCode}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="font-semibold text-slate-500">asset</p>
-                  <p className="mt-1 break-all font-mono text-slate-900">
-                    t-1-{selectedSite.domainSlug}-{selectedSite.scriptVersion}.js
-                  </p>
-                </div>
-              </div>
+              </>
             ) : null}
           </div>
 

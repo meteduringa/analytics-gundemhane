@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { readPanelSession } from "@/lib/panel-session";
-import { createSite, readTestSites } from "@/lib/bik-test-engine";
+import {
+  createSite,
+  deleteTestSite,
+  readTestSites,
+} from "@/lib/bik-test-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,4 +52,38 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ site });
+}
+
+export async function DELETE(request: Request) {
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
+  if (session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
+  }
+
+  const payload = await request.json().catch(() => null);
+  const siteId = String(payload?.siteId || "").trim();
+
+  if (!siteId) {
+    return NextResponse.json(
+      { error: "Silinecek site secilmedi." },
+      { status: 400 }
+    );
+  }
+
+  const result = await deleteTestSite(siteId);
+  if (!result) {
+    return NextResponse.json(
+      { error: "Test sitesi bulunamadi." },
+      { status: 404 }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    deleted: result.deleted,
+    sites: result.sites,
+  });
 }

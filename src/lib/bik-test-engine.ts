@@ -409,6 +409,21 @@ export const createSite = async (input: {
   return site;
 };
 
+export const deleteTestSite = async (siteId: string) => {
+  const sites = await readTestSites();
+  const site =
+    sites.find((item) => item.id === siteId) ||
+    sites.find((item) => item.websiteId === siteId) ||
+    sites.find((item) => item.legacyWebsiteId === siteId) ||
+    null;
+
+  if (!site) return null;
+
+  const nextSites = sites.filter((item) => item.id !== site.id);
+  await writeTestSites(nextSites);
+  return { deleted: site, sites: nextSites };
+};
+
 export const dataPaths = {
   dataDir,
   sitesPath,
