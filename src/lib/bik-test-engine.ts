@@ -318,6 +318,31 @@ export const istanbulDayString = (date: Date) =>
     day: "2-digit",
   }).format(date);
 
+const readJsonlForIstanbulDay = async <T extends { ts?: string }>(
+  path: string,
+  day: string
+): Promise<T[]> => {
+  const text = await readFile(path, "utf8").catch(() => "");
+  if (!text) return [];
+  return text
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => safeJson<T | null>(line, null))
+    .filter((item): item is T => {
+      if (!item?.ts) return false;
+      const ts = new Date(item.ts);
+      if (Number.isNaN(ts.getTime())) return false;
+      return istanbulDayString(ts) === day;
+    });
+};
+
+export const readEventsForDay = async (day: string) =>
+  readJsonlForIstanbulDay<BikTestStoredEvent>(eventsPath, day);
+
+export const readRejectionsForDay = async (day: string) =>
+  readJsonlForIstanbulDay<BikTestStoredEvent>(rejectionsPath, day);
+
 export const createSite = async (input: {
   name: string;
   domain: string;

@@ -10,6 +10,9 @@ const SESSION_INACTIVITY_MINUTES = 35;
 const MAX_GAP_FOR_TIME_SECONDS = 1800;
 const LAST_PAGE_ESTIMATE_SECONDS = 30;
 const MIN_VISITOR_SECONDS = 1;
+const TR_OR_UNKNOWN_COUNTRY = {
+  OR: [{ countryCode: "TR" }, { countryCode: null }, { countryCode: "" }],
+};
 
 const normalizeUrl = (value: string) => {
   try {
@@ -299,7 +302,7 @@ export const computeSimpleDayMetrics = async (
           websiteId: siteId,
           type: "PAGEVIEW",
           mode,
-          countryCode: "TR",
+          ...TR_OR_UNKNOWN_COUNTRY,
           createdAt: { gte: start, lte: end },
         },
         select: {
@@ -320,7 +323,7 @@ export const computeSimpleDayMetrics = async (
           websiteId: siteId,
           type: "PAGEVIEW",
           mode,
-          countryCode: "TR",
+          ...TR_OR_UNKNOWN_COUNTRY,
           clientTimestamp: { gte: start, lte: end },
           NOT: {
             createdAt: { gte: start, lte: end },
@@ -363,7 +366,7 @@ export const computeSimpleDayMetrics = async (
           type: "EVENT",
           mode,
           eventName: "ping",
-          countryCode: "TR",
+          ...TR_OR_UNKNOWN_COUNTRY,
           createdAt: { gte: start, lte: end },
         },
         select: {
@@ -384,7 +387,7 @@ export const computeSimpleDayMetrics = async (
           type: "EVENT",
           mode,
           eventName: "ping",
-          countryCode: "TR",
+          ...TR_OR_UNKNOWN_COUNTRY,
           clientTimestamp: { gte: start, lte: end },
           NOT: {
             createdAt: { gte: start, lte: end },

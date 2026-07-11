@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { readPanelSession } from "@/lib/panel-session";
 import {
   istanbulDayString,
+  readEventsForDay,
   readRecentEvents,
   readRecentRejections,
+  readRejectionsForDay,
   readTestSites,
   type BikTestStoredEvent,
 } from "@/lib/bik-test-engine";
@@ -32,7 +34,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Test sitesi bulunamadi." }, { status: 404 });
   }
 
-  const [events, rejections] = await Promise.all([
+  const [events, rejections, recentEvents, recentRejections] = await Promise.all([
+    readEventsForDay(day),
+    readRejectionsForDay(day),
     readRecentEvents(20000),
     readRecentRejections(5000),
   ]);
@@ -41,6 +45,14 @@ export async function GET(request: Request) {
     (event) => event.siteId === site.id && sameDay(event, day)
   );
   const siteRejections = rejections.filter(
+    (event) =>
+      (event.siteId === site.id || event.websiteId === site.websiteId || event.websiteId === site.legacyWebsiteId) &&
+      sameDay(event, day)
+  );
+  const recentSiteEvents = recentEvents.filter(
+    (event) => event.siteId === site.id && sameDay(event, day)
+  );
+  const recentSiteRejections = recentRejections.filter(
     (event) =>
       (event.siteId === site.id || event.websiteId === site.websiteId || event.websiteId === site.legacyWebsiteId) &&
       sameDay(event, day)
@@ -72,7 +84,7 @@ export async function GET(request: Request) {
   const avgActiveSeconds = uniqueVisitors.size
     ? Math.round(activeSeconds / uniqueVisitors.size)
     : 0;
-  const recent = [...siteEvents, ...siteRejections]
+  const recent = [...recentSiteEvents, ...recentSiteRejections]
     .sort((a, b) => b.ts.localeCompare(a.ts))
     .slice(0, 30);
 

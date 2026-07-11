@@ -6,6 +6,11 @@ import { getIstanbulDayRange } from "@/lib/bik-time";
 
 export const runtime = "nodejs";
 
+const TODAY_CACHE_MAX_AGE_MS = 60_000;
+const noStoreHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const siteId = searchParams.get("siteId");
@@ -34,7 +39,12 @@ export async function GET(request: Request) {
     unique_visitors: BigInt(0),
   };
 
-  if (existing && !isToday) {
+  const existingIsFreshEnough =
+    existing &&
+    (!isToday ||
+      now.getTime() - existing.updatedAt.getTime() <= TODAY_CACHE_MAX_AGE_MS);
+
+  if (existingIsFreshEnough) {
     return NextResponse.json({
       siteId,
       day: dayString,
@@ -47,22 +57,7 @@ export async function GET(request: Request) {
         existing.dailyAvgTimeOnSiteSecondsPerUnique,
       daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
       daily_popcent_pageviews: Number(popcentSummary.total_events),
-    });
-  }
-  if (existing && isToday) {
-    return NextResponse.json({
-      siteId,
-      day: dayString,
-      as_of_utc: now.toISOString(),
-      record_updated_at: existing.updatedAt.toISOString(),
-      daily_unique_users: existing.dailyUniqueUsers,
-      daily_direct_unique_users: existing.dailyDirectUniqueUsers,
-      daily_pageviews: existing.dailyPageviews,
-      daily_avg_time_on_site_seconds_per_unique:
-        existing.dailyAvgTimeOnSiteSecondsPerUnique,
-      daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
-      daily_popcent_pageviews: Number(popcentSummary.total_events),
-    });
+    }, { headers: noStoreHeaders });
   }
   const computed = await computeSimpleDayMetrics(siteId, dayDate);
   const saved = await prisma.analyticsDailySimple.upsert({
@@ -102,5 +97,5 @@ export async function GET(request: Request) {
       saved.dailyAvgTimeOnSiteSecondsPerUnique,
     daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
     daily_popcent_pageviews: Number(popcentSummary.total_events),
-  });
+  }, { headers: noStoreHeaders });
 }
