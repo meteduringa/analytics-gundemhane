@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getIstanbulDayRange } from "@/lib/bik-time";
-import { refreshSimpleDayMetricsWithLock } from "@/lib/analytics-simple-cache";
+import {
+  refreshSimpleDayMetricsWithLock,
+  startSimpleDayMetricsRefresh,
+} from "@/lib/analytics-simple-cache";
 
 export const runtime = "nodejs";
 
@@ -29,7 +32,13 @@ export async function GET(request: Request) {
   const shouldRefresh =
     !record || now.getTime() - record.updatedAt.getTime() > LIVE_CACHE_MAX_AGE_MS;
   let refreshInProgress = false;
-  if (shouldRefresh) {
+  if (shouldRefresh && record) {
+    const refresh = await startSimpleDayMetricsRefresh({
+      siteId,
+      dayDate: now,
+    });
+    refreshInProgress = refresh.refreshInProgress;
+  } else if (shouldRefresh) {
     const refresh = await refreshSimpleDayMetricsWithLock({
       siteId,
       dayDate: now,

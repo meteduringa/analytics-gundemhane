@@ -77,3 +77,39 @@ export const refreshSimpleDayMetricsWithLock = async (input: {
     }
   }
 };
+
+export const startSimpleDayMetricsRefresh = async (input: {
+  siteId: string;
+  dayDate: Date;
+}) => {
+  const { start: dayStart } = getIstanbulDayRange(input.dayDate);
+  const lockKey = simpleRecomputeLockKey(input.siteId, dayStart);
+  const lockValue = `${process.pid}:${Date.now()}`;
+  const redis = await getRedis().catch(() => null);
+
+  if (redis) {
+    const acquired = await redis
+      .set(lockKey, lockValue, { NX: true, EX: 180 })
+      .catch(() => null);
+    if (!acquired) {
+      return { started: false, refreshInProgress: true };
+    }
+  }
+
+  void (async () => {
+    try {
+      await saveSimpleDayMetrics(input.siteId, input.dayDate);
+    } catch (error) {
+      console.error("simple metrics background refresh failed", error);
+    } finally {
+      if (redis) {
+        const currentValue = await redis.get(lockKey).catch(() => null);
+        if (currentValue === lockValue) {
+          await redis.del(lockKey).catch(() => undefined);
+        }
+      }
+    }
+  })();
+
+  return { started: true, refreshInProgress: true };
+};

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseDayParam } from "@/lib/bik-time";
 import { getIstanbulDayRange } from "@/lib/bik-time";
-import { refreshSimpleDayMetricsWithLock } from "@/lib/analytics-simple-cache";
+import {
+  refreshSimpleDayMetricsWithLock,
+  startSimpleDayMetricsRefresh,
+} from "@/lib/analytics-simple-cache";
 
 export const runtime = "nodejs";
 
@@ -60,6 +63,24 @@ export async function GET(request: Request) {
       refresh_in_progress: false,
     }, { headers: noStoreHeaders });
   }
+  if (existing) {
+    const refresh = await startSimpleDayMetricsRefresh({ siteId, dayDate });
+    return NextResponse.json({
+      siteId,
+      day: dayString,
+      as_of_utc: now.toISOString(),
+      record_updated_at: existing.updatedAt.toISOString(),
+      daily_unique_users: existing.dailyUniqueUsers,
+      daily_direct_unique_users: existing.dailyDirectUniqueUsers,
+      daily_pageviews: existing.dailyPageviews,
+      daily_avg_time_on_site_seconds_per_unique:
+        existing.dailyAvgTimeOnSiteSecondsPerUnique,
+      daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
+      daily_popcent_pageviews: Number(popcentSummary.total_events),
+      refresh_in_progress: refresh.refreshInProgress,
+    }, { headers: noStoreHeaders });
+  }
+
   const refresh = await refreshSimpleDayMetricsWithLock({
     siteId,
     dayDate,
