@@ -7,7 +7,7 @@ const roleGate: Record<string, string[]> = {
   "/api/analytics": ["ADMIN", "CUSTOMER"],
 };
 
-const noStorePrefixes = ["/login", "/panel", "/api/panel"];
+const noStorePrefixes = ["/login", "/panel", "/test", "/api/panel"];
 
 const applyNoStoreHeaders = (response: NextResponse) => {
   response.headers.set(
@@ -23,7 +23,12 @@ const applyNoStoreHeaders = (response: NextResponse) => {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname === "/panel" || pathname.startsWith("/panel/")) {
+  if (
+    pathname === "/panel" ||
+    pathname.startsWith("/panel/") ||
+    pathname === "/test" ||
+    pathname.startsWith("/test/")
+  ) {
     const panelSession = request.cookies.get("panel_session")?.value;
     if (!panelSession) {
       const loginUrl = new URL("/login", request.url);
@@ -73,5 +78,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/panel/:path*", "/api/panel/:path*", "/api/analytics/:path*"],
+  matcher: [
+    "/login",
+    "/panel/:path*",
+    "/test",
+    "/test/:path*",
+    "/api/panel/:path*",
+    "/api/analytics/:path*",
+  ],
 };

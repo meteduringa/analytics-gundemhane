@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
         headers: noStoreHeaders,
       },
       {
+        source: "/test",
+        headers: noStoreHeaders,
+      },
+      {
         source: "/api/panel/:path*",
         headers: noStoreHeaders,
       },
