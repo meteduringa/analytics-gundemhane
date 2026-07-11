@@ -45,6 +45,21 @@ function bind(){send("",{source:"load"});document.addEventListener("mousemove",f
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bind,{once:true});else bind();
 }();`;
 
+const publicOrigin = (request: Request) => {
+  const configured = process.env.NEXT_PUBLIC_HOST_URL?.replace(/\/+$/, "");
+  if (configured) return configured;
+
+  const forwardedHost =
+    request.headers.get("x-forwarded-host") || request.headers.get("host");
+  if (forwardedHost) {
+    const forwardedProto =
+      request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";
+    return `${forwardedProto}://${forwardedHost}`.replace(/\/+$/, "");
+  }
+
+  return new URL(request.url).origin.replace(/\/+$/, "");
+};
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ asset: string }> }
@@ -61,7 +76,7 @@ export async function GET(
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const origin = new URL(request.url).origin.replace(/\/+$/, "");
+  const origin = publicOrigin(request);
   return new NextResponse(
     buildV2Script({
       origin,
