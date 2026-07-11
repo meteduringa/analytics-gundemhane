@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseDayParam } from "@/lib/bik-time";
-import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
 import { getIstanbulDayRange } from "@/lib/bik-time";
 import { getRedis } from "@/lib/redis";
+import {
+  saveSimpleDayMetrics,
+  simpleRecomputeLockKey,
+} from "@/lib/analytics-simple-cache";
 
 export const runtime = "nodejs";
 
@@ -17,8 +20,8 @@ export async function POST(request: Request) {
   }
 
   const dayDate = parseDayParam(dateParam) ?? new Date();
-  const { start: dayStart } = getIstanbulDayRange(dayDate);
-  const lockKey = `simple:recompute:lock:${siteId}:${dayStart.toISOString()}`;
+  const { start: dayStart, dayString } = getIstanbulDayRange(dayDate);
+  const lockKey = simpleRecomputeLockKey(siteId, dayStart);
   const lockValue = `${process.pid}:${Date.now()}`;
   const redis = await getRedis().catch(() => null);
 
@@ -55,36 +58,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const computed = await computeSimpleDayMetrics(siteId, dayDate);
-
-    const saved = await prisma.analyticsDailySimple.upsert({
-      where: {
-        siteId_day: {
-          siteId,
-          day: computed.dayStart,
-        },
-      },
-      create: {
-        siteId,
-        day: computed.dayStart,
-        dailyUniqueUsers: computed.daily_unique_users,
-        dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-        dailyPageviews: computed.daily_pageviews,
-        dailyAvgTimeOnSiteSecondsPerUnique:
-          computed.daily_avg_time_on_site_seconds_per_unique,
-      },
-      update: {
-        dailyUniqueUsers: computed.daily_unique_users,
-        dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-        dailyPageviews: computed.daily_pageviews,
-        dailyAvgTimeOnSiteSecondsPerUnique:
-          computed.daily_avg_time_on_site_seconds_per_unique,
-      },
-    });
+    const saved = await saveSimpleDayMetrics(siteId, dayDate);
 
     return NextResponse.json({
       siteId,
-      day: computed.dayString,
+      day: dayString,
       daily_unique_users: saved.dailyUniqueUsers,
       daily_direct_unique_users: saved.dailyDirectUniqueUsers,
       daily_pageviews: saved.dailyPageviews,

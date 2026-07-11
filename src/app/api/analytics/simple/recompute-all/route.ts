@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
 import { parseDayParam, getIstanbulDayRange } from "@/lib/bik-time";
+import { refreshSimpleDayMetricsWithLock } from "@/lib/analytics-simple-cache";
 
 export const runtime = "nodejs";
 
@@ -30,37 +30,36 @@ export async function POST(request: Request) {
     select: { id: true, name: true },
   });
 
-  const results: { id: string; name: string; ok: boolean; error?: string }[] =
-    [];
+  const results: {
+    id: string;
+    name: string;
+    ok: boolean;
+    skipped?: boolean;
+    error?: string;
+  }[] = [];
 
   for (const website of websites) {
     try {
-      const computed = await computeSimpleDayMetrics(website.id, targetDay);
-      await prisma.analyticsDailySimple.upsert({
+      const existing = await prisma.analyticsDailySimple.findUnique({
         where: {
           siteId_day: {
             siteId: website.id,
             day: dayStart,
           },
         },
-        create: {
-          siteId: website.id,
-          day: dayStart,
-          dailyUniqueUsers: computed.daily_unique_users,
-          dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-          dailyPageviews: computed.daily_pageviews,
-          dailyAvgTimeOnSiteSecondsPerUnique:
-            computed.daily_avg_time_on_site_seconds_per_unique,
-        },
-        update: {
-          dailyUniqueUsers: computed.daily_unique_users,
-          dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-          dailyPageviews: computed.daily_pageviews,
-          dailyAvgTimeOnSiteSecondsPerUnique:
-            computed.daily_avg_time_on_site_seconds_per_unique,
-        },
       });
-      results.push({ id: website.id, name: website.name, ok: true });
+      const refresh = await refreshSimpleDayMetricsWithLock({
+        siteId: website.id,
+        dayDate: targetDay,
+        existing,
+      });
+      results.push({
+        id: website.id,
+        name: website.name,
+        ok: Boolean(refresh.record),
+        skipped: refresh.refreshInProgress,
+        error: refresh.record ? undefined : "recompute-in-progress",
+      });
     } catch (error) {
       results.push({
         id: website.id,

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseDayParam } from "@/lib/bik-time";
-import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
 import { getIstanbulDayRange } from "@/lib/bik-time";
+import { refreshSimpleDayMetricsWithLock } from "@/lib/analytics-simple-cache";
 
 export const runtime = "nodejs";
 
@@ -57,45 +57,31 @@ export async function GET(request: Request) {
         existing.dailyAvgTimeOnSiteSecondsPerUnique,
       daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
       daily_popcent_pageviews: Number(popcentSummary.total_events),
+      refresh_in_progress: false,
     }, { headers: noStoreHeaders });
   }
-  const computed = await computeSimpleDayMetrics(siteId, dayDate);
-  const saved = await prisma.analyticsDailySimple.upsert({
-    where: {
-      siteId_day: {
-        siteId,
-        day: computed.dayStart,
-      },
-    },
-    create: {
-      siteId,
-      day: computed.dayStart,
-      dailyUniqueUsers: computed.daily_unique_users,
-      dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-      dailyPageviews: computed.daily_pageviews,
-      dailyAvgTimeOnSiteSecondsPerUnique:
-        computed.daily_avg_time_on_site_seconds_per_unique,
-    },
-    update: {
-      dailyUniqueUsers: computed.daily_unique_users,
-      dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-      dailyPageviews: computed.daily_pageviews,
-      dailyAvgTimeOnSiteSecondsPerUnique:
-        computed.daily_avg_time_on_site_seconds_per_unique,
-    },
+  const refresh = await refreshSimpleDayMetricsWithLock({
+    siteId,
+    dayDate,
+    existing,
   });
+  const saved = refresh.record;
 
   return NextResponse.json({
     siteId,
-    day: computed.dayString,
+    day: dayString,
     as_of_utc: now.toISOString(),
-    record_updated_at: saved.updatedAt.toISOString(),
-    daily_unique_users: saved.dailyUniqueUsers,
-    daily_direct_unique_users: saved.dailyDirectUniqueUsers,
-    daily_pageviews: saved.dailyPageviews,
+    record_updated_at: saved?.updatedAt.toISOString() ?? null,
+    daily_unique_users: saved?.dailyUniqueUsers ?? 0,
+    daily_direct_unique_users: saved?.dailyDirectUniqueUsers ?? 0,
+    daily_pageviews: saved?.dailyPageviews ?? 0,
     daily_avg_time_on_site_seconds_per_unique:
-      saved.dailyAvgTimeOnSiteSecondsPerUnique,
+      saved?.dailyAvgTimeOnSiteSecondsPerUnique ?? 0,
     daily_popcent_unique_users: Number(popcentSummary.unique_visitors),
     daily_popcent_pageviews: Number(popcentSummary.total_events),
-  }, { headers: noStoreHeaders });
+    refresh_in_progress: refresh.refreshInProgress,
+  }, {
+    headers: noStoreHeaders,
+    status: saved ? 200 : 202,
+  });
 }

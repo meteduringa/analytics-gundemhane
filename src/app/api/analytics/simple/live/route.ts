@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getIstanbulDayRange } from "@/lib/bik-time";
-import { computeSimpleDayMetrics } from "@/lib/analytics-simple";
+import { refreshSimpleDayMetricsWithLock } from "@/lib/analytics-simple-cache";
 
 export const runtime = "nodejs";
 
@@ -28,32 +28,15 @@ export async function GET(request: Request) {
   const now = new Date();
   const shouldRefresh =
     !record || now.getTime() - record.updatedAt.getTime() > LIVE_CACHE_MAX_AGE_MS;
+  let refreshInProgress = false;
   if (shouldRefresh) {
-    const computed = await computeSimpleDayMetrics(siteId, now);
-    record = await prisma.analyticsDailySimple.upsert({
-      where: {
-        siteId_day: {
-          siteId,
-          day: computed.dayStart,
-        },
-      },
-      create: {
-        siteId,
-        day: computed.dayStart,
-        dailyUniqueUsers: computed.daily_unique_users,
-        dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-        dailyPageviews: computed.daily_pageviews,
-        dailyAvgTimeOnSiteSecondsPerUnique:
-          computed.daily_avg_time_on_site_seconds_per_unique,
-      },
-      update: {
-        dailyUniqueUsers: computed.daily_unique_users,
-        dailyDirectUniqueUsers: computed.daily_direct_unique_users,
-        dailyPageviews: computed.daily_pageviews,
-        dailyAvgTimeOnSiteSecondsPerUnique:
-          computed.daily_avg_time_on_site_seconds_per_unique,
-      },
+    const refresh = await refreshSimpleDayMetricsWithLock({
+      siteId,
+      dayDate: now,
+      existing: record,
     });
+    record = refresh.record;
+    refreshInProgress = refresh.refreshInProgress;
   }
 
   const istanbulFormatter = new Intl.DateTimeFormat("tr-TR", {
@@ -87,6 +70,7 @@ export async function GET(request: Request) {
       record?.dailyAvgTimeOnSiteSecondsPerUnique ?? 0,
     daily_popcent_unique_users: 0,
     daily_popcent_pageviews: 0,
+    refresh_in_progress: refreshInProgress,
   };
 
   return NextResponse.json(payload, {
