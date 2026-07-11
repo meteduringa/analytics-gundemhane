@@ -103,6 +103,22 @@ const defaultSites = (): BikTestSite[] => [
     scriptVersion: 0,
     createdAt: nowIso(),
   },
+  {
+    id: "test-site-ozdiyarbakir",
+    name: "Oz Diyarbakir Kalibrasyon",
+    legacyWebsiteId: "608f0fb4-d5af-47c2-9ba2-3a3faea7e25b",
+    websiteId: "b13e4934-6a51-4d0d-a3a1-aa92614bf9f3",
+    publishCode: "INT-TEST-004",
+    domain: "ozdiyarbakirgazetesi.com",
+    domainSlug: "https-www-ozdiyarbakirgazetesi-com",
+    collectorNode: "ns01",
+    allowedDomains: [
+      "ozdiyarbakirgazetesi.com",
+      "www.ozdiyarbakirgazetesi.com",
+    ],
+    scriptVersion: 0,
+    createdAt: nowIso(),
+  },
 ];
 
 const ensureDir = async () => {
@@ -117,8 +133,23 @@ const safeJson = <T>(value: string, fallback: T): T => {
   }
 };
 
+const hostFromInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    return url.hostname;
+  } catch {
+    const schemeIndex = trimmed.indexOf("://");
+    const hostish =
+      schemeIndex >= 0 ? trimmed.slice(schemeIndex + 3) : trimmed;
+    return hostish.split(/[/?#]/)[0]?.replace(/:\d+$/, "") || "";
+  }
+};
+
 export const normalizeHost = (value: string) =>
-  value.replace(/:\d+$/, "").replace(/^www\./, "").toLowerCase();
+  hostFromInput(value).replace(/:\d+$/, "").replace(/^www\./, "").toLowerCase();
 
 export const domainSlug = (domain: string) =>
   normalizeHost(domain)
@@ -181,7 +212,11 @@ export const findSiteByAnyWebsiteId = async (websiteId: string) => {
 
 export const findSiteBySlug = async (slug: string) => {
   const sites = await readTestSites();
-  return sites.find((site) => site.domainSlug === slug) || null;
+  return (
+    sites.find((site) => site.domainSlug === slug) ||
+    sites.find((site) => domainSlug(site.domain) === slug) ||
+    null
+  );
 };
 
 export const siteAllowsHost = (site: BikTestSite, host: string | null) => {
