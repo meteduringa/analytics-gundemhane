@@ -4,8 +4,6 @@ import { computeBikReferenceMetrics } from "@/lib/bik-reference-model";
 import {
   istanbulDayString,
   readEventsForDay,
-  readRecentEvents,
-  readRecentRejections,
   readRejectionsForDay,
   readTestSites,
   type BikTestStoredEvent,
@@ -49,11 +47,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Test sitesi bulunamadi." }, { status: 404 });
   }
 
-  const [events, rejections, recentEvents, recentRejections] = await Promise.all([
+  const [events, rejections] = await Promise.all([
     readEventsForDay(day),
     readRejectionsForDay(day),
-    readRecentEvents(20000),
-    readRecentRejections(5000),
   ]);
 
   const siteEvents = events.filter(
@@ -64,14 +60,8 @@ export async function GET(request: Request) {
       (event.siteId === site.id || event.websiteId === site.websiteId || event.websiteId === site.legacyWebsiteId) &&
       sameDay(event, day)
   );
-  const recentSiteEvents = recentEvents.filter(
-    (event) => event.siteId === site.id && sameDay(event, day)
-  );
-  const recentSiteRejections = recentRejections.filter(
-    (event) =>
-      (event.siteId === site.id || event.websiteId === site.websiteId || event.websiteId === site.legacyWebsiteId) &&
-      sameDay(event, day)
-  );
+  const recentSiteEvents = siteEvents;
+  const recentSiteRejections = siteRejections;
   const referenceMetrics = computeBikReferenceMetrics(
     siteEvents
       .filter((event) => event.isPageview || event.isHeartbeat)

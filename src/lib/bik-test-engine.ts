@@ -1,5 +1,7 @@
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { access, appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import crypto from "node:crypto";
 
 export type BikTestSite = {
@@ -454,14 +456,43 @@ export const storeTestEvent = async (
   return stored;
 };
 
+const pathExists = async (path: string) => {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const eachJsonlLine = async function* (path: string) {
+  if (!(await pathExists(path))) return;
+  const lines = createInterface({
+    input: createReadStream(path, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+
+  for await (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed) yield trimmed;
+  }
+};
+
 export const readJsonl = async <T>(path: string, limit = 5000): Promise<T[]> => {
-  const text = await readFile(path, "utf8").catch(() => "");
-  if (!text) return [];
-  const lines = text.trim().split("\n").filter(Boolean);
-  return lines
-    .slice(Math.max(0, lines.length - limit))
-    .map((line) => safeJson<T | null>(line, null))
-    .filter((item): item is T => Boolean(item));
+  if (limit <= 0) return [];
+  const ring: T[] = [];
+  let seen = 0;
+
+  for await (const line of eachJsonlLine(path)) {
+    const item = safeJson<T | null>(line, null);
+    if (!item) continue;
+    ring[seen % limit] = item;
+    seen += 1;
+  }
+
+  if (seen <= limit) return ring.slice(0, seen);
+  const start = seen % limit;
+  return [...ring.slice(start), ...ring.slice(0, start)];
 };
 
 export const readRecentEvents = async (limit = 5000) =>
@@ -482,19 +513,15 @@ const readJsonlForIstanbulDay = async <T extends { ts?: string }>(
   path: string,
   day: string
 ): Promise<T[]> => {
-  const text = await readFile(path, "utf8").catch(() => "");
-  if (!text) return [];
-  return text
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => safeJson<T | null>(line, null))
-    .filter((item): item is T => {
-      if (!item?.ts) return false;
-      const ts = new Date(item.ts);
-      if (Number.isNaN(ts.getTime())) return false;
-      return istanbulDayString(ts) === day;
-    });
+  const result: T[] = [];
+  for await (const line of eachJsonlLine(path)) {
+    const item = safeJson<T | null>(line, null);
+    if (!item?.ts) continue;
+    const ts = new Date(item.ts);
+    if (Number.isNaN(ts.getTime())) continue;
+    if (istanbulDayString(ts) === day) result.push(item);
+  }
+  return result;
 };
 
 export const readEventsForDay = async (day: string) =>
