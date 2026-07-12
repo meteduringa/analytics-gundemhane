@@ -1,5 +1,13 @@
 import { createReadStream } from "node:fs";
-import { access, appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  access,
+  appendFile,
+  copyFile,
+  mkdir,
+  readFile,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import crypto from "node:crypto";
@@ -56,6 +64,7 @@ export type BikTestStoredEvent = BikTestEventInput & {
 };
 
 const dataDir = join(process.cwd(), "data", "bik-test");
+const backupRoot = join(process.cwd(), "data", "bik-test-backups");
 const sitesPath = join(dataDir, "sites.json");
 const eventsPath = join(dataDir, "events.jsonl");
 const rejectionsPath = join(dataDir, "rejections.jsonl");
@@ -465,6 +474,42 @@ const pathExists = async (path: string) => {
   }
 };
 
+export const backupTestData = async (reason = "manual") => {
+  await ensureDir();
+  await mkdir(backupRoot, { recursive: true });
+
+  const createdAt = new Date().toISOString();
+  const safeReason = reason
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "manual";
+  const backupPath = join(
+    backupRoot,
+    `${createdAt.replace(/[:.]/g, "-")}-${safeReason}`
+  );
+  await mkdir(backupPath, { recursive: true });
+
+  const files: string[] = [];
+  for (const [source, target] of [
+    [sitesPath, "sites.json"],
+    [eventsPath, "events.jsonl"],
+    [rejectionsPath, "rejections.jsonl"],
+  ] as const) {
+    if (!(await pathExists(source))) continue;
+    await copyFile(source, join(backupPath, target));
+    files.push(target);
+  }
+
+  await writeFile(
+    join(backupPath, "metadata.json"),
+    `${JSON.stringify({ createdAt, reason, source: dataDir, files }, null, 2)}\n`,
+    "utf8"
+  );
+
+  return { createdAt, path: backupPath, files };
+};
+
 const eachJsonlLine = async function* (path: string) {
   if (!(await pathExists(path))) return;
   const lines = createInterface({
@@ -578,6 +623,7 @@ export const deleteTestSite = async (siteId: string) => {
 
 export const dataPaths = {
   dataDir,
+  backupRoot,
   sitesPath,
   eventsPath,
   rejectionsPath,

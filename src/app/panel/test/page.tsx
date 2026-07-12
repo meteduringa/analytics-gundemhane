@@ -305,13 +305,22 @@ export default function PanelTestPage() {
   };
 
   const resetData = async () => {
+    const confirmed = window.confirm(
+      "Test verisi sifirlanmadan once yedek alinacak. Devam etmek istiyor musun?"
+    );
+    if (!confirmed) return;
+
     const response = await fetch("/api/panel/test/reset", { method: "POST" });
     const payload = await response.json();
     if (!response.ok) {
       setMessage(payload.error || "Test verisi sifirlanamadi.");
       return;
     }
-    setMessage("Test verisi sifirlandi.");
+    setMessage(
+      payload.backup?.createdAt
+        ? `Test verisi yedeklendi ve sifirlandi: ${payload.backup.createdAt}`
+        : "Test verisi yedeklendi ve sifirlandi."
+    );
     await loadMetrics();
   };
 

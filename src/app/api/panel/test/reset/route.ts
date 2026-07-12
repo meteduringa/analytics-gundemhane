@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { readPanelSession } from "@/lib/panel-session";
-import { dataPaths } from "@/lib/bik-test-engine";
+import { backupTestData, dataPaths } from "@/lib/bik-test-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +15,12 @@ export async function POST() {
     return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
   }
 
+  const backup = await backupTestData("manual-panel-reset");
   await mkdir(dataPaths.dataDir, { recursive: true });
   await Promise.all([
     writeFile(dataPaths.eventsPath, "", "utf8"),
     writeFile(dataPaths.rejectionsPath, "", "utf8"),
   ]);
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, backup });
 }

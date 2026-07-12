@@ -60,9 +60,17 @@ jobs:
             docker build -t analytics-app:latest .
             docker network inspect analytics_default >/dev/null 2>&1 || docker network create analytics_default
             ANALYTICS_DATA_DIR="${HOME}/analytics-data"
-            mkdir -p "$ANALYTICS_DATA_DIR"
+            ANALYTICS_BACKUP_DIR="${HOME}/analytics-data-backups"
+            mkdir -p "$ANALYTICS_DATA_DIR" "$ANALYTICS_BACKUP_DIR"
             if docker ps -a --format '{{.Names}}' | grep -qx analytics-app-1; then
-              docker cp analytics-app-1:/app/data/. "$ANALYTICS_DATA_DIR"/ >/dev/null 2>&1 || true
+              if ! docker inspect analytics-app-1 --format '{{range .Mounts}}{{println .Destination}}{{end}}' | grep -qx /app/data; then
+                docker cp analytics-app-1:/app/data/. "$ANALYTICS_DATA_DIR"/ >/dev/null 2>&1 || true
+              fi
+            fi
+            if [ -d "$ANALYTICS_DATA_DIR/bik-test" ]; then
+              BACKUP_PATH="$ANALYTICS_BACKUP_DIR/bik-test-$(date -u +%Y%m%dT%H%M%SZ)"
+              cp -a "$ANALYTICS_DATA_DIR/bik-test" "$BACKUP_PATH"
+              echo "Analytics test data backup: $BACKUP_PATH"
             fi
             docker rm -f analytics-app-1 >/dev/null 2>&1 || true
             for i in $(seq 1 10); do
