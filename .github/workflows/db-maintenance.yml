@@ -1,0 +1,67 @@
+name: DB Maintenance
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: analytics-prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  restart-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restart DB and verify panels
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 188.245.176.56
+          username: mete
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -euo pipefail
+
+            echo "== containers before =="
+            docker ps --format "table {{.Names}}\t{{.Status}}"
+
+            echo "== postgres readiness before =="
+            docker exec analytics-postgres-1 pg_isready -U analytics -d analytics || true
+
+            echo "== postgres activity before =="
+            timeout 10s docker exec analytics-postgres-1 psql -U analytics -d analytics -Atc \
+              "SELECT COALESCE(state, 'none') || ':' || count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;" || true
+            timeout 10s docker exec analytics-postgres-1 psql -U analytics -d analytics -Atc \
+              "SELECT COALESCE(wait_event_type, 'none') || ':' || COALESCE(wait_event, 'none') || ':' || count(*) FROM pg_stat_activity WHERE wait_event IS NOT NULL GROUP BY wait_event_type, wait_event ORDER BY count(*) DESC LIMIT 10;" || true
+
+            echo "== restarting postgres =="
+            docker restart analytics-postgres-1
+
+            for i in $(seq 1 30); do
+              if docker exec analytics-postgres-1 pg_isready -U analytics -d analytics >/dev/null 2>&1; then
+                echo "Postgres ready."
+                break
+              fi
+              sleep 2
+            done
+
+            echo "== restarting app and caddy =="
+            docker restart analytics-app-1
+            sleep 5
+            docker restart analytics-caddy-1 >/dev/null 2>&1 || true
+
+            echo "== health probe =="
+            curl -fsS -m 10 https://giris.elmasistatistik.com.tr/api/health
+            echo
+
+            echo "== panel sites probe =="
+            PANEL_TOKEN="$(docker exec analytics-app-1 node -e 'const { createHmac } = require("node:crypto"); const payload = Buffer.from(JSON.stringify({ id: "maintenance-check", email: "maintenance-check@local", role: "ADMIN", panelSections: [], exp: Date.now() + 10 * 60 * 1000 }), "utf8").toString("base64url"); const sig = createHmac("sha256", process.env.AUTH_SECRET || "change-me").update(payload).digest("base64url"); process.stdout.write(`${payload}.${sig}`);')"
+            curl -fsS -m 20 -H "Cookie: panel_session=$PANEL_TOKEN" \
+              https://giris.elmasistatistik.com.tr/api/panel/sites \
+              >/tmp/panel-sites.json
+            wc -c /tmp/panel-sites.json
+
+            echo "== postgres activity after =="
+            timeout 10s docker exec analytics-postgres-1 psql -U analytics -d analytics -Atc \
+              "SELECT COALESCE(state, 'none') || ':' || count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;" || true
+
+            echo "Maintenance complete."
