@@ -68,6 +68,13 @@ const backupRoot = join(process.cwd(), "data", "bik-test-backups");
 const sitesPath = join(dataDir, "sites.json");
 const eventsPath = join(dataDir, "events.jsonl");
 const rejectionsPath = join(dataDir, "rejections.jsonl");
+const dailyEventsPath = (day: string) => join(dataDir, `events-${day}.jsonl`);
+const dailyRejectionsPath = (day: string) =>
+  join(dataDir, `rejections-${day}.jsonl`);
+const legacyDailyEventsPath = (day: string) =>
+  join(dataDir, `legacy-events-${day}.jsonl`);
+const legacyDailyRejectionsPath = (day: string) =>
+  join(dataDir, `legacy-rejections-${day}.jsonl`);
 
 const nowIso = () => new Date().toISOString();
 
@@ -461,7 +468,15 @@ export const storeTestEvent = async (
   };
 
   const line = `${JSON.stringify(stored)}\n`;
-  await appendFile(accepted ? eventsPath : rejectionsPath, line, "utf8");
+  const day = istanbulDayString(new Date(stored.ts));
+  await Promise.all([
+    appendFile(accepted ? eventsPath : rejectionsPath, line, "utf8"),
+    appendFile(
+      accepted ? dailyEventsPath(day) : dailyRejectionsPath(day),
+      line,
+      "utf8"
+    ),
+  ]);
   return stored;
 };
 
@@ -554,26 +569,123 @@ export const istanbulDayString = (date: Date) =>
     day: "2-digit",
   }).format(date);
 
-const readJsonlForIstanbulDay = async <T extends { ts?: string }>(
+const fastIstanbulDayFromIso = (value: string) => {
+  const time = Date.parse(value);
+  if (Number.isNaN(time)) return null;
+  return new Date(time + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+};
+
+type DayEventFilter = {
+  siteId?: string;
+  websiteIds?: string[];
+};
+
+const matchesDayFilter = <
+  T extends { siteId?: string; websiteId?: string; ts?: string }
+>(
+  item: T,
+  filter?: DayEventFilter
+) => {
+  if (!filter) return true;
+  if (filter.siteId && item.siteId === filter.siteId) return true;
+  if (filter.websiteIds?.length && item.websiteId) {
+    return filter.websiteIds.includes(item.websiteId);
+  }
+  return !filter.siteId && !filter.websiteIds?.length;
+};
+
+const daySources = async (
+  day: string,
+  legacyPath: string,
+  dailyPath: string,
+  fallbackPath: string
+) => {
+  const hasLegacy = await pathExists(legacyPath);
+  const hasDaily = await pathExists(dailyPath);
+  const sources: Array<{ path: string; dayScoped: boolean }> = [];
+
+  if (hasLegacy) {
+    sources.push({ path: legacyPath, dayScoped: true });
+  } else if (hasDaily) {
+    sources.push({ path: fallbackPath, dayScoped: false });
+  }
+
+  if (hasDaily) {
+    sources.push({ path: dailyPath, dayScoped: true });
+  }
+
+  if (!sources.length) {
+    sources.push({ path: fallbackPath, dayScoped: false });
+  }
+
+  return sources;
+};
+
+const readJsonlForIstanbulDay = async <
+  T extends { id?: string; siteId?: string; websiteId?: string; ts?: string }
+>(
   path: string,
-  day: string
+  day: string,
+  filter?: DayEventFilter,
+  dayScoped = false,
+  seenIds?: Set<string>
 ): Promise<T[]> => {
   const result: T[] = [];
   for await (const line of eachJsonlLine(path)) {
     const item = safeJson<T | null>(line, null);
     if (!item?.ts) continue;
-    const ts = new Date(item.ts);
-    if (Number.isNaN(ts.getTime())) continue;
-    if (istanbulDayString(ts) === day) result.push(item);
+    if (!dayScoped && fastIstanbulDayFromIso(item.ts) !== day) continue;
+    if (!matchesDayFilter(item, filter)) continue;
+    if (item.id && seenIds?.has(item.id)) continue;
+    if (item.id) seenIds?.add(item.id);
+    result.push(item);
   }
   return result;
 };
 
-export const readEventsForDay = async (day: string) =>
-  readJsonlForIstanbulDay<BikTestStoredEvent>(eventsPath, day);
+const readDaySources = async (
+  day: string,
+  legacyPath: string,
+  dailyPath: string,
+  fallbackPath: string,
+  filter?: DayEventFilter
+) => {
+  const sources = await daySources(day, legacyPath, dailyPath, fallbackPath);
+  const seenIds = new Set<string>();
+  const chunks = await Promise.all(
+    sources.map((source) =>
+      readJsonlForIstanbulDay<BikTestStoredEvent>(
+        source.path,
+        day,
+        filter,
+        source.dayScoped,
+        seenIds
+      )
+    )
+  );
+  return chunks.flat();
+};
 
-export const readRejectionsForDay = async (day: string) =>
-  readJsonlForIstanbulDay<BikTestStoredEvent>(rejectionsPath, day);
+export const readEventsForDay = async (day: string, filter?: DayEventFilter) =>
+  readDaySources(
+    day,
+    legacyDailyEventsPath(day),
+    dailyEventsPath(day),
+    eventsPath,
+    filter
+  );
+
+export const readRejectionsForDay = async (
+  day: string,
+  filter?: DayEventFilter
+) =>
+  readDaySources(
+    day,
+    legacyDailyRejectionsPath(day),
+    dailyRejectionsPath(day),
+    rejectionsPath,
+    filter
+  );
 
 export const createSite = async (input: {
   name: string;
@@ -627,4 +739,8 @@ export const dataPaths = {
   sitesPath,
   eventsPath,
   rejectionsPath,
+  dailyEventsPath,
+  dailyRejectionsPath,
+  legacyDailyEventsPath,
+  legacyDailyRejectionsPath,
 };

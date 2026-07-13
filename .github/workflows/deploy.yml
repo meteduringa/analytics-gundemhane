@@ -101,6 +101,98 @@ jobs:
               -e TZ='Europe/Istanbul' \
               analytics-app:latest \
               npm start
+            docker exec analytics-app-1 node <<'NODE'
+            const { once } = require("node:events");
+            const fs = require("node:fs");
+            const fsp = require("node:fs/promises");
+            const path = require("node:path");
+            const readline = require("node:readline");
+
+            const dataDir = "/app/data/bik-test";
+            const dayFromTs = (value) => {
+              const time = Date.parse(value || "");
+              if (Number.isNaN(time)) return null;
+              return new Date(time + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            };
+
+            const indexFile = async (sourceName, targetPrefix) => {
+              const source = path.join(dataDir, sourceName);
+              if (!fs.existsSync(source)) return { sourceName, days: 0, lines: 0 };
+
+              const tmpRoot = path.join(dataDir, `.tmp-${targetPrefix}-${Date.now()}`);
+              await fsp.mkdir(tmpRoot, { recursive: true });
+              const writers = new Map();
+              let lines = 0;
+
+              const writerFor = (day) => {
+                const existing = writers.get(day);
+                if (existing) return existing;
+                const stream = fs.createWriteStream(path.join(tmpRoot, `${targetPrefix}-${day}.jsonl`), {
+                  flags: "a",
+                });
+                writers.set(day, stream);
+                return stream;
+              };
+
+              const rl = readline.createInterface({
+                input: fs.createReadStream(source, { encoding: "utf8" }),
+                crlfDelay: Infinity,
+              });
+
+              for await (const line of rl) {
+                if (!line.trim()) continue;
+                let parsed;
+                try {
+                  parsed = JSON.parse(line);
+                } catch {
+                  continue;
+                }
+                const day = dayFromTs(parsed.ts);
+                if (!day) continue;
+                const stream = writerFor(day);
+                if (!stream.write(`${line}\n`)) {
+                  await once(stream, "drain");
+                }
+                lines += 1;
+              }
+
+              await Promise.all(
+                [...writers.values()].map(
+                  (stream) =>
+                    new Promise((resolve, reject) => {
+                      stream.end(resolve);
+                      stream.on("error", reject);
+                    })
+                )
+              );
+
+              for (const day of writers.keys()) {
+                await fsp.rename(
+                  path.join(tmpRoot, `${targetPrefix}-${day}.jsonl`),
+                  path.join(dataDir, `${targetPrefix}-${day}.jsonl`)
+                );
+              }
+              await fsp.rm(tmpRoot, { recursive: true, force: true });
+              return { sourceName, days: writers.size, lines };
+            };
+
+            (async () => {
+              if (!fs.existsSync(dataDir)) return;
+              const results = await Promise.all([
+                indexFile("events.jsonl", "legacy-events"),
+                indexFile("rejections.jsonl", "legacy-rejections"),
+              ]);
+              await fsp.writeFile(
+                path.join(dataDir, "legacy-index-state.json"),
+                `${JSON.stringify({ indexedAt: new Date().toISOString(), results }, null, 2)}\n`,
+                "utf8"
+              );
+              console.log("Analytics test data daily index:", JSON.stringify(results));
+            })().catch((error) => {
+              console.error("Analytics test data daily index failed:", error);
+              process.exitCode = 1;
+            });
+            NODE
             docker restart analytics-caddy-1 >/dev/null 2>&1 || true
             for i in $(seq 1 30); do
               if curl -fsS https://giris.elmasistatistik.com.tr/api/health >/dev/null; then

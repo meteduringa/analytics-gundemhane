@@ -12,9 +12,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const sameDay = (event: BikTestStoredEvent, day: string) =>
-  istanbulDayString(new Date(event.ts)) === day;
-
 const payloadString = (
   payload: Record<string, unknown>,
   key: string
@@ -48,17 +45,19 @@ export async function GET(request: Request) {
   }
 
   const [events, rejections] = await Promise.all([
-    readEventsForDay(day),
-    readRejectionsForDay(day),
+    readEventsForDay(day, { siteId: site.id }),
+    readRejectionsForDay(day, {
+      siteId: site.id,
+      websiteIds: [site.websiteId, site.legacyWebsiteId],
+    }),
   ]);
 
-  const siteEvents = events.filter(
-    (event) => event.siteId === site.id && sameDay(event, day)
-  );
+  const siteEvents = events.filter((event) => event.siteId === site.id);
   const siteRejections = rejections.filter(
     (event) =>
-      (event.siteId === site.id || event.websiteId === site.websiteId || event.websiteId === site.legacyWebsiteId) &&
-      sameDay(event, day)
+      event.siteId === site.id ||
+      event.websiteId === site.websiteId ||
+      event.websiteId === site.legacyWebsiteId
   );
   const recentSiteEvents = siteEvents;
   const recentSiteRejections = siteRejections;
