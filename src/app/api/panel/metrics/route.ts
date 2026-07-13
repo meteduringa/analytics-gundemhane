@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { readPanelSession } from "@/lib/panel-session";
 import { canAccessPanelWebsite } from "@/lib/panel-website-access";
@@ -20,6 +21,117 @@ const getIstanbulDayRange = (date = new Date()) => {
   const start = new Date(`${dayString}T00:00:00+03:00`);
   const end = new Date(`${dayString}T23:59:59+03:00`);
   return { start, end };
+};
+
+type DurationAggregateRow = {
+  unique_visitors: number | bigint | null;
+  total_duration: number | bigint | null;
+};
+
+type CountRow = {
+  count: number | bigint | null;
+};
+
+const asNumber = (value: number | bigint | null | undefined) =>
+  typeof value === "bigint" ? Number(value) : Number(value ?? 0);
+
+const sessionConditions = (
+  websiteId: string,
+  startDate?: Date | null,
+  endDate?: Date | null,
+  field: "startedAt" | "lastSeenAt" = "startedAt"
+) => {
+  const conditions: Prisma.Sql[] = [Prisma.sql`"websiteId" = ${websiteId}`];
+  if (startDate) {
+    conditions.push(Prisma.sql`${Prisma.raw(`"${field}"`)} >= ${startDate}`);
+  }
+  if (endDate) {
+    conditions.push(Prisma.sql`${Prisma.raw(`"${field}"`)} <= ${endDate}`);
+  }
+  return Prisma.join(conditions, " AND ");
+};
+
+const eventConditions = (
+  websiteId: string,
+  startDate?: Date | null,
+  endDate?: Date | null
+) => {
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`"websiteId" = ${websiteId}`,
+    Prisma.sql`"type" = 'PAGEVIEW'`,
+    Prisma.sql`"mode" = 'RAW'`,
+  ];
+  if (startDate) {
+    conditions.push(Prisma.sql`"createdAt" >= ${startDate}`);
+  }
+  if (endDate) {
+    conditions.push(Prisma.sql`"createdAt" <= ${endDate}`);
+  }
+  return Prisma.join(conditions, " AND ");
+};
+
+const readDurationAggregate = async (
+  whereClause: Prisma.Sql,
+  hideShortReads: boolean
+) => {
+  const rows = (await prisma.$queryRaw`
+    WITH visitor_totals AS (
+      SELECT
+        "visitorId",
+        SUM(GREATEST(0, EXTRACT(EPOCH FROM ("lastSeenAt" - "startedAt"))))::bigint AS duration_sec
+      FROM "analytics_sessions"
+      WHERE ${whereClause}
+      GROUP BY "visitorId"
+    )
+    SELECT
+      COUNT(*)::int AS unique_visitors,
+      COALESCE(SUM(duration_sec), 0)::bigint AS total_duration
+    FROM visitor_totals
+    WHERE ${hideShortReads ? Prisma.sql`duration_sec >= 1` : Prisma.sql`true`}
+  `) as DurationAggregateRow[];
+
+  const row = rows[0];
+  return {
+    uniqueVisitors: asNumber(row?.unique_visitors),
+    totalDuration: asNumber(row?.total_duration),
+  };
+};
+
+const readPageviewCount = async (
+  eventWhereClause: Prisma.Sql,
+  sessionWhereClause: Prisma.Sql,
+  hideShortReads: boolean
+) => {
+  if (!hideShortReads) {
+    const rows = (await prisma.$queryRaw`
+      SELECT COUNT(*)::int AS count
+      FROM "analytics_events"
+      WHERE ${eventWhereClause}
+    `) as CountRow[];
+    return asNumber(rows[0]?.count);
+  }
+
+  const rows = (await prisma.$queryRaw`
+    WITH visitor_totals AS (
+      SELECT
+        "visitorId",
+        SUM(GREATEST(0, EXTRACT(EPOCH FROM ("lastSeenAt" - "startedAt"))))::bigint AS duration_sec
+      FROM "analytics_sessions"
+      WHERE ${sessionWhereClause}
+      GROUP BY "visitorId"
+      HAVING SUM(GREATEST(0, EXTRACT(EPOCH FROM ("lastSeenAt" - "startedAt")))) >= 1
+    )
+    SELECT COUNT(*)::int AS count
+    FROM "analytics_events" events
+    WHERE ${eventWhereClause}
+      AND EXISTS (
+        SELECT 1
+        FROM visitor_totals
+        WHERE visitor_totals."visitorId" = events."visitorId"
+      )
+  `) as CountRow[];
+
+  return asNumber(rows[0]?.count);
 };
 
 export async function GET(request: Request) {
@@ -48,166 +160,38 @@ export async function GET(request: Request) {
   const startDate = parseFilterDate(startValue);
   const endDate = parseFilterDate(endValue, true);
 
-  const sessionWhere: {
-    websiteId: string;
-    startedAt?: { gte?: Date; lte?: Date };
-  } = { websiteId };
-  if (startDate || endDate) {
-    sessionWhere.startedAt = {
-      gte: startDate ?? undefined,
-      lte: endDate ?? undefined,
-    };
-  }
-
-  const sessions = await prisma.analyticsSession.findMany({
-    where: sessionWhere,
-    select: {
-      sessionId: true,
-      visitorId: true,
-      startedAt: true,
-      lastSeenAt: true,
-    },
-  });
-
-  const sessionDurations = sessions.map((session) => ({
-    sessionId: session.sessionId,
-    visitorId: session.visitorId,
-    durationSec: Math.max(
-      0,
-      Math.round(
-        (session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000
-      )
-    ),
-  }));
-
-  const visitorTotals = new Map<string, number>();
-  for (const session of sessionDurations) {
-    visitorTotals.set(
-      session.visitorId,
-      (visitorTotals.get(session.visitorId) ?? 0) + session.durationSec
-    );
-  }
-
-  const allowedVisitorIds = hideShortReads
-    ? new Set(
-        [...visitorTotals.entries()]
-          .filter(([, total]) => total >= 1)
-          .map(([visitorId]) => visitorId)
-      )
-    : new Set(visitorTotals.keys());
-
-  const filteredSessions = hideShortReads
-    ? sessionDurations.filter((session) => allowedVisitorIds.has(session.visitorId))
-    : sessionDurations;
-
-  const totalDuration = hideShortReads
-    ? [...allowedVisitorIds].reduce(
-        (sum, visitorId) => sum + (visitorTotals.get(visitorId) ?? 0),
-        0
-      )
-    : [...visitorTotals.values()].reduce((sum, value) => sum + value, 0);
-
-  const uniqueVisitors = allowedVisitorIds.size;
+  const sessionWhereClause = sessionConditions(websiteId, startDate, endDate);
+  const { uniqueVisitors, totalDuration } = await readDurationAggregate(
+    sessionWhereClause,
+    hideShortReads
+  );
   const avgDuration =
     uniqueVisitors > 0 ? Math.round(totalDuration / uniqueVisitors) : 0;
 
-  const eventWhere: {
-    websiteId: string;
-    type: "PAGEVIEW";
-    mode: string;
-    createdAt?: { gte?: Date; lte?: Date };
-    sessionId?: { in: string[] };
-    visitorId?: { in: string[] };
-  } = { websiteId, type: "PAGEVIEW", mode: "RAW" };
-
-  if (startDate || endDate) {
-    eventWhere.createdAt = {
-      gte: startDate ?? undefined,
-      lte: endDate ?? undefined,
-    };
-  }
-
-  if (hideShortReads) {
-    eventWhere.visitorId = {
-      in: allowedVisitorIds.size ? [...allowedVisitorIds] : ["__none__"],
-    };
-  }
-
-  const totalPageviews = await prisma.analyticsEvent.count({
-    where: eventWhere,
-  });
+  const totalPageviews = await readPageviewCount(
+    eventConditions(websiteId, startDate, endDate),
+    sessionWhereClause,
+    hideShortReads
+  );
 
   const dailyRange = getIstanbulDayRange();
-  const dailySessions = await prisma.analyticsSession.findMany({
-    where: {
-      websiteId,
-      startedAt: {
-        gte: dailyRange.start,
-        lte: dailyRange.end,
-      },
-    },
-    select: {
-      visitorId: true,
-      startedAt: true,
-      lastSeenAt: true,
-    },
-  });
-
-  const dailyVisitorTotals = new Map<string, number>();
-  for (const session of dailySessions) {
-    const duration = Math.max(
-      0,
-      Math.round((session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000)
-    );
-    dailyVisitorTotals.set(
-      session.visitorId,
-      (dailyVisitorTotals.get(session.visitorId) ?? 0) + duration
-    );
-  }
-
-  const dailyAllowedVisitorIds = hideShortReads
-    ? new Set(
-        [...dailyVisitorTotals.entries()]
-          .filter(([, total]) => total >= 1)
-          .map(([visitorId]) => visitorId)
-      )
-    : new Set(dailyVisitorTotals.keys());
+  const dailyAggregate = await readDurationAggregate(
+    sessionConditions(websiteId, dailyRange.start, dailyRange.end),
+    hideShortReads
+  );
 
   const now = new Date();
   const liveThreshold = new Date(now.getTime() - 5 * 60 * 1000);
-  const liveSessions = await prisma.analyticsSession.findMany({
-    where: {
-      websiteId,
-      lastSeenAt: { gte: liveThreshold },
-    },
-    select: { visitorId: true, startedAt: true, lastSeenAt: true },
-  });
-
-  const liveVisitorTotals = new Map<string, number>();
-  for (const session of liveSessions) {
-    const duration = Math.max(
-      0,
-      Math.round((session.lastSeenAt.getTime() - session.startedAt.getTime()) / 1000)
-    );
-    liveVisitorTotals.set(
-      session.visitorId,
-      (liveVisitorTotals.get(session.visitorId) ?? 0) + duration
-    );
-  }
-
-  const liveAllowedVisitorIds = hideShortReads
-    ? new Set(
-        [...liveVisitorTotals.entries()]
-          .filter(([, total]) => total >= 1)
-          .map(([visitorId]) => visitorId)
-      )
-    : new Set(liveVisitorTotals.keys());
+  const liveAggregate = await readDurationAggregate(
+    sessionConditions(websiteId, liveThreshold, null, "lastSeenAt"),
+    hideShortReads
+  );
 
   return NextResponse.json({
     totalPageviews,
     totalDuration,
     avgDuration,
-    dailyUniqueVisitors: dailyAllowedVisitorIds.size,
-    liveVisitors: liveAllowedVisitorIds.size,
+    dailyUniqueVisitors: dailyAggregate.uniqueVisitors,
+    liveVisitors: liveAggregate.uniqueVisitors,
   });
 }
