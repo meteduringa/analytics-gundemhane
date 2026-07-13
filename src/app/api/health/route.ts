@@ -4,23 +4,50 @@ import { getRedis } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    const redis = await getRedis();
-    await redis.ping();
+const CHECK_TIMEOUT_MS = 1500;
 
-    return NextResponse.json(
-      { ok: true, service: "analytics", time: new Date().toISOString() },
-      { status: 200 }
-    );
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "health-check-failed";
+
+const withTimeout = async (label: string, check: () => Promise<unknown>) => {
+  const startedAt = Date.now();
+  try {
+    await Promise.race([
+      check(),
+      new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error(`${label} timeout after ${CHECK_TIMEOUT_MS}ms`)),
+          CHECK_TIMEOUT_MS
+        );
+      }),
+    ]);
+    return { ok: true, durationMs: Date.now() - startedAt };
   } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "health-check-failed",
-      },
-      { status: 503 }
-    );
+    return {
+      ok: false,
+      durationMs: Date.now() - startedAt,
+      error: errorMessage(error),
+    };
   }
+};
+
+export async function GET() {
+  const [database, redis] = await Promise.all([
+    withTimeout("database", () => prisma.$queryRaw`SELECT 1`),
+    withTimeout("redis", async () => {
+      const client = await getRedis();
+      await client.ping();
+    }),
+  ]);
+
+  return NextResponse.json(
+    {
+      ok: true,
+      service: "analytics",
+      time: new Date().toISOString(),
+      dependenciesOk: database.ok && redis.ok,
+      dependencies: { database, redis },
+    },
+    { status: 200 }
+  );
 }
