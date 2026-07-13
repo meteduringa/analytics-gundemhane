@@ -20,9 +20,22 @@ jobs:
           port: 22
           script: |
             set -euo pipefail
+            run_sudo() {
+              if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+                sudo "$@"
+              else
+                echo "Skipping sudo $*"
+              fi
+            }
 
             echo "== containers before =="
             docker ps --format "table {{.Names}}\t{{.Status}}"
+
+            echo "== stopping background services =="
+            run_sudo systemctl disable analytics-recompute.service >/dev/null 2>&1 || true
+            run_sudo systemctl disable analytics-alert.service >/dev/null 2>&1 || true
+            run_sudo systemctl stop analytics-recompute.service >/dev/null 2>&1 || true
+            run_sudo systemctl stop analytics-alert.service >/dev/null 2>&1 || true
 
             echo "== postgres readiness before =="
             docker exec analytics-postgres-1 pg_isready -U analytics -d analytics || true
@@ -50,14 +63,24 @@ jobs:
             docker restart analytics-caddy-1 >/dev/null 2>&1 || true
 
             echo "== health probe =="
-            curl -fsS -m 10 https://giris.elmasistatistik.com.tr/api/health
+            for i in $(seq 1 20); do
+              if curl -fsS -m 10 https://giris.elmasistatistik.com.tr/api/health; then
+                break
+              fi
+              sleep 2
+            done
             echo
 
             echo "== panel sites probe =="
             PANEL_TOKEN="$(docker exec analytics-app-1 node -e 'const { createHmac } = require("node:crypto"); const payload = Buffer.from(JSON.stringify({ id: "maintenance-check", email: "maintenance-check@local", role: "ADMIN", panelSections: [], exp: Date.now() + 10 * 60 * 1000 }), "utf8").toString("base64url"); const sig = createHmac("sha256", process.env.AUTH_SECRET || "change-me").update(payload).digest("base64url"); process.stdout.write(`${payload}.${sig}`);')"
-            curl -fsS -m 20 -H "Cookie: panel_session=$PANEL_TOKEN" \
-              https://giris.elmasistatistik.com.tr/api/panel/sites \
-              >/tmp/panel-sites.json
+            for i in $(seq 1 10); do
+              if curl -fsS -m 20 -H "Cookie: panel_session=$PANEL_TOKEN" \
+                https://giris.elmasistatistik.com.tr/api/panel/sites \
+                >/tmp/panel-sites.json; then
+                break
+              fi
+              sleep 2
+            done
             wc -c /tmp/panel-sites.json
 
             echo "== postgres activity after =="

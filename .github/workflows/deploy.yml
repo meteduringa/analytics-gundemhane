@@ -33,8 +33,7 @@ jobs:
               fi
             }
             cleanup() {
-              run_sudo systemctl start analytics-recompute.service >/dev/null 2>&1 || true
-              run_sudo systemctl start analytics-alert.service >/dev/null 2>&1 || true
+              echo "Leaving analytics background services stopped for panel DB stability."
             }
             trap cleanup EXIT
             docker builder prune -af >/dev/null 2>&1 || true
@@ -48,7 +47,8 @@ jobs:
             chmod +x ops/*.sh || true
             run_sudo cp ops/analytics-alert.service /etc/systemd/system/analytics-alert.service
             run_sudo systemctl daemon-reload
-            run_sudo systemctl enable analytics-alert.service >/dev/null 2>&1 || true
+            run_sudo systemctl disable analytics-recompute.service >/dev/null 2>&1 || true
+            run_sudo systemctl disable analytics-alert.service >/dev/null 2>&1 || true
             if [ -f /tmp/codex-cache-all-5m.pid ]; then
               kill "$(cat /tmp/codex-cache-all-5m.pid)" >/dev/null 2>&1 || true
               rm -f /tmp/codex-cache-all-5m.pid
