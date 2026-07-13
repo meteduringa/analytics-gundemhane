@@ -12,6 +12,12 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const METRICS_CACHE_TTL_MS = 15_000;
+const metricsCache = new Map<
+  string,
+  { expiresAt: number; payload: Record<string, unknown> }
+>();
+
 const payloadString = (
   payload: Record<string, unknown>,
   key: string
@@ -25,6 +31,22 @@ const referenceEventId = (event: BikTestStoredEvent) =>
 
 const visitorKey = (event: BikTestStoredEvent) =>
   event.visitorId || event.fingerprint || event.ipHash || event.id;
+
+const compactRecentEvent = (event: BikTestStoredEvent) => ({
+  id: event.id,
+  ts: event.ts,
+  version: event.version,
+  endpoint: event.endpoint,
+  accepted: event.accepted,
+  rejectReason: event.rejectReason,
+  isBot: event.isBot,
+  isPageview: event.isPageview,
+  isHeartbeat: event.isHeartbeat,
+  hostname: event.hostname,
+  url: event.url,
+  name: event.name,
+  activeSeconds: event.activeSeconds,
+});
 
 export async function GET(request: Request) {
   const session = await readPanelSession();
@@ -44,6 +66,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Test sitesi bulunamadi." }, { status: 404 });
   }
 
+  const cacheKey = `${day}:${site.id}`;
+  const cached = metricsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return NextResponse.json(cached.payload);
+  }
+
   const [events, rejections] = await Promise.all([
     readEventsForDay(day, { siteId: site.id }),
     readRejectionsForDay(day, {
@@ -61,42 +89,59 @@ export async function GET(request: Request) {
   );
   const recentSiteEvents = siteEvents;
   const recentSiteRejections = siteRejections;
-  const referenceMetrics = computeBikReferenceMetrics(
-    siteEvents
-      .filter((event) => event.isPageview || event.isHeartbeat)
-      .map((event) =>
-        event.isPageview
-          ? {
-              eventType: "pageview" as const,
-              siteId: event.siteId,
-              visitorId: visitorKey(event),
-              sessionId: event.sessionId,
-              eventId: referenceEventId(event),
-              url: event.url || "/",
-              referrer: event.referrer,
-              ts: event.ts,
-              activeSeconds: event.activeSeconds,
-              isBot: event.isBot,
-            }
-          : {
-              eventType: "check" as const,
-              siteId: event.siteId,
-              visitorId: event.visitorId || null,
-              sessionId: event.sessionId,
-              eventId: referenceEventId(event),
-              url: event.url,
-              ts: event.ts,
-              activeSeconds: event.activeSeconds,
-              isBot: event.isBot,
-            }
-      ),
-    { minimumActiveSeconds: 1 }
-  );
-  const recent = [...recentSiteEvents, ...recentSiteRejections]
-    .sort((a, b) => b.ts.localeCompare(a.ts))
-    .slice(0, 30);
 
-  return NextResponse.json({
+  let rawPageviews = 0;
+  let heartbeats = 0;
+  let customEvents = 0;
+  let botEvents = 0;
+  const referenceEvents = [];
+
+  for (const event of siteEvents) {
+    if (event.isPageview) rawPageviews += 1;
+    if (event.isHeartbeat) heartbeats += 1;
+    if (!event.isPageview && !event.isHeartbeat) customEvents += 1;
+    if (event.isBot) botEvents += 1;
+    if (!event.isPageview && !event.isHeartbeat) continue;
+    referenceEvents.push(
+      event.isPageview
+        ? {
+            eventType: "pageview" as const,
+            siteId: event.siteId,
+            visitorId: visitorKey(event),
+            sessionId: event.sessionId,
+            eventId: referenceEventId(event),
+            url: event.url || "/",
+            referrer: event.referrer,
+            ts: event.ts,
+            activeSeconds: event.activeSeconds,
+            isBot: event.isBot,
+          }
+        : {
+            eventType: "check" as const,
+            siteId: event.siteId,
+            visitorId: event.visitorId || null,
+            sessionId: event.sessionId,
+            eventId: referenceEventId(event),
+            url: event.url,
+            ts: event.ts,
+            activeSeconds: event.activeSeconds,
+            isBot: event.isBot,
+          }
+    );
+  }
+
+  const referenceMetrics = computeBikReferenceMetrics(referenceEvents, {
+    minimumActiveSeconds: 1,
+  });
+  const recent = [
+    ...recentSiteEvents.slice(-30),
+    ...recentSiteRejections.slice(-30),
+  ]
+    .sort((a, b) => b.ts.localeCompare(a.ts))
+    .slice(0, 30)
+    .map(compactRecentEvent);
+
+  const payload = {
     site,
     day,
     asOf: new Date().toISOString(),
@@ -104,18 +149,23 @@ export async function GET(request: Request) {
       accepted: siteEvents.length,
       rejected: siteRejections.length,
       pageviews: referenceMetrics.daily_pageviews,
-      rawPageviews: siteEvents.filter((event) => event.isPageview).length,
+      rawPageviews,
       uniqueVisitors: referenceMetrics.daily_unique_visitors,
       directUniqueVisitors: referenceMetrics.daily_direct_unique_visitors,
       sessions: referenceMetrics.daily_sessions,
-      heartbeats: siteEvents.filter((event) => event.isHeartbeat).length,
-      customEvents: siteEvents.filter(
-        (event) => !event.isPageview && !event.isHeartbeat
-      ).length,
-      botEvents: siteEvents.filter((event) => event.isBot).length,
+      heartbeats,
+      customEvents,
+      botEvents,
       avgActiveSeconds: referenceMetrics.daily_avg_time_on_site_seconds,
       diagnostics: referenceMetrics.diagnostics,
     },
     recent,
+  };
+
+  metricsCache.set(cacheKey, {
+    expiresAt: Date.now() + METRICS_CACHE_TTL_MS,
+    payload,
   });
+
+  return NextResponse.json(payload);
 }
