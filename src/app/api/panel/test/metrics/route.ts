@@ -6,17 +6,45 @@ import {
   readEventsForDay,
   readRejectionsForDay,
   readTestSites,
+  type BikTestSite,
   type BikTestStoredEvent,
 } from "@/lib/bik-test-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const METRICS_CACHE_TTL_MS = 15_000;
+const METRICS_CACHE_TTL_MS = 30_000;
+const METRICS_STALE_TTL_MS = 10 * 60_000;
 const metricsCache = new Map<
   string,
-  { expiresAt: number; payload: Record<string, unknown> }
+  {
+    freshUntil: number;
+    staleUntil: number;
+    payload?: MetricsPayload;
+    pending?: Promise<MetricsPayload>;
+  }
 >();
+
+type MetricsPayload = {
+  site: BikTestSite;
+  day: string;
+  asOf: string;
+  metrics: {
+    accepted: number;
+    rejected: number;
+    pageviews: number;
+    rawPageviews: number;
+    uniqueVisitors: number;
+    directUniqueVisitors: number;
+    sessions: number;
+    heartbeats: number;
+    customEvents: number;
+    botEvents: number;
+    avgActiveSeconds: number;
+    diagnostics: unknown;
+  };
+  recent: ReturnType<typeof compactRecentEvent>[];
+};
 
 const payloadString = (
   payload: Record<string, unknown>,
@@ -48,30 +76,10 @@ const compactRecentEvent = (event: BikTestStoredEvent) => ({
   activeSeconds: event.activeSeconds,
 });
 
-export async function GET(request: Request) {
-  const session = await readPanelSession();
-  if (!session) {
-    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
-  }
-  if (session.role !== "ADMIN") {
-    return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const siteId = searchParams.get("siteId") || "";
-  const day = searchParams.get("date") || istanbulDayString(new Date());
-  const sites = await readTestSites();
-  const site = sites.find((item) => item.id === siteId) || sites[0] || null;
-  if (!site) {
-    return NextResponse.json({ error: "Test sitesi bulunamadi." }, { status: 404 });
-  }
-
-  const cacheKey = `${day}:${site.id}`;
-  const cached = metricsCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.payload);
-  }
-
+const buildMetricsPayload = async (
+  site: BikTestSite,
+  day: string
+): Promise<MetricsPayload> => {
   const [events, rejections] = await Promise.all([
     readEventsForDay(day, { siteId: site.id }),
     readRejectionsForDay(day, {
@@ -141,7 +149,7 @@ export async function GET(request: Request) {
     .slice(0, 30)
     .map(compactRecentEvent);
 
-  const payload = {
+  return {
     site,
     day,
     asOf: new Date().toISOString(),
@@ -161,11 +169,58 @@ export async function GET(request: Request) {
     },
     recent,
   };
+};
 
-  metricsCache.set(cacheKey, {
-    expiresAt: Date.now() + METRICS_CACHE_TTL_MS,
-    payload,
+const refreshMetricsCache = (cacheKey: string, site: BikTestSite, day: string) => {
+  const pending = buildMetricsPayload(site, day).then((payload) => {
+    metricsCache.set(cacheKey, {
+      freshUntil: Date.now() + METRICS_CACHE_TTL_MS,
+      staleUntil: Date.now() + METRICS_STALE_TTL_MS,
+      payload,
+    });
+    return payload;
   });
+  const existing = metricsCache.get(cacheKey);
+  metricsCache.set(cacheKey, {
+    freshUntil: existing?.freshUntil || 0,
+    staleUntil: existing?.staleUntil || 0,
+    payload: existing?.payload,
+    pending,
+  });
+  return pending;
+};
+
+export async function GET(request: Request) {
+  const session = await readPanelSession();
+  if (!session) {
+    return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+  }
+  if (session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Yetkisiz işlem." }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const siteId = searchParams.get("siteId") || "";
+  const day = searchParams.get("date") || istanbulDayString(new Date());
+  const sites = await readTestSites();
+  const site = sites.find((item) => item.id === siteId) || sites[0] || null;
+  if (!site) {
+    return NextResponse.json({ error: "Test sitesi bulunamadi." }, { status: 404 });
+  }
+
+  const cacheKey = `${day}:${site.id}`;
+  const cached = metricsCache.get(cacheKey);
+  const now = Date.now();
+  if (cached?.payload && cached.freshUntil > now) {
+    return NextResponse.json(cached.payload);
+  }
+  if (cached?.payload && cached.staleUntil > now) {
+    if (!cached.pending) {
+      void refreshMetricsCache(cacheKey, site, day).catch(() => undefined);
+    }
+    return NextResponse.json(cached.payload);
+  }
+  const payload = await (cached?.pending || refreshMetricsCache(cacheKey, site, day));
 
   return NextResponse.json(payload);
 }

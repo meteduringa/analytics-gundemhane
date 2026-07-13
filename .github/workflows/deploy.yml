@@ -197,6 +197,15 @@ jobs:
             for i in $(seq 1 30); do
               if curl -fsS https://giris.elmasistatistik.com.tr/api/health >/dev/null; then
                 echo "Health check passed."
+                PANEL_TOKEN="$(docker exec analytics-app-1 node -e 'const { createHmac } = require("node:crypto"); const payload = Buffer.from(JSON.stringify({ id: "deploy-cache-warm", email: "deploy-cache-warm@local", role: "ADMIN", panelSections: [], exp: Date.now() + 10 * 60 * 1000 }), "utf8").toString("base64url"); const sig = createHmac("sha256", process.env.AUTH_SECRET || "change-me").update(payload).digest("base64url"); process.stdout.write(`${payload}.${sig}`);')"
+                TODAY="$(TZ=Europe/Istanbul date +%F)"
+                for SITE_ID in test-site-haberexpres test-site-gercekfethiye test-site-ozdiyarbakir; do
+                  curl -fsS -m 90 \
+                    -H "Cookie: panel_session=$PANEL_TOKEN" \
+                    "https://giris.elmasistatistik.com.tr/api/panel/test/metrics?siteId=${SITE_ID}&date=${TODAY}" \
+                    >/dev/null || echo "Metric cache warm failed for ${SITE_ID}"
+                done
+                echo "BIK test metrics cache warmed."
                 env \
                   NEXT_PUBLIC_HOST_URL='https://giris.elmasistatistik.com.tr' \
                   TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}' \
