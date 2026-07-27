@@ -11,12 +11,15 @@ services:
     build: .
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://analytics:Analytics2025Pass@postgres:5432/analytics
+      DATABASE_URL: postgresql://analytics:Analytics2025Pass@analytics-postgres-1:5432/analytics
       AUTH_SECRET: change-me
       NEXTAUTH_URL: https://giris.elmasistatistik.com.tr
       NEXT_PUBLIC_HOST_URL: https://giris.elmasistatistik.com.tr
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://analytics-redis-1:6379
+      TEST2_DATA_DIR: /app/test2-data/events
       TZ: Europe/Istanbul
+    volumes:
+      - ./test2-data:/app/test2-data
     dns:
       - 1.1.1.1
       - 8.8.8.8

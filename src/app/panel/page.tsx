@@ -182,22 +182,13 @@ const PanelPage = () => {
     void loadSites();
   }, [forceLogout, selectedSiteId, user]);
 
-  useEffect(() => {
-    refreshAll(selectedSiteId, selectedDate, { includeTopPages: false });
-  }, [selectedDate, selectedSiteId, viewMode]);
-
-  useEffect(() => {
-    if (!user) return;
+  const handleManualRefresh = () => {
     if (!selectedSiteId) return;
-    if (viewMode !== "live") return;
-    const interval = window.setInterval(() => {
-      refreshAll(selectedSiteId, selectedDate, {
-        silent: true,
-        includeTopPages: false,
-      });
-    }, 60000);
-    return () => window.clearInterval(interval);
-  }, [selectedDate, selectedSiteId, user, viewMode]);
+    const nextDate = viewMode === "live" ? formatDateInput(new Date()) : dateInput;
+    setDateInput(nextDate);
+    setSelectedDate(nextDate);
+    void refreshAll(selectedSiteId, nextDate, { includeTopPages: false });
+  };
 
   const selectedSite = useMemo(
     () => sites.find((site) => site.id === selectedSiteId),
@@ -268,7 +259,7 @@ const PanelPage = () => {
       <FiltersBar
         dateValue={dateInput}
         onDateChange={setDateInput}
-        onFilter={() => setSelectedDate(dateInput)}
+        onFilter={handleManualRefresh}
         disableDate={viewMode === "live"}
       />
 
@@ -484,7 +475,7 @@ const PanelPage = () => {
       <FiltersBar
         dateValue={dateInput}
         onDateChange={setDateInput}
-        onFilter={() => setSelectedDate(dateInput)}
+        onFilter={handleManualRefresh}
         disableDate={viewMode === "live"}
       />
 

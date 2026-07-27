@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+AUTO_DISABLED_FILE="${ANALYTICS_AUTO_DISABLED_FILE:-/opt/analytics/ops/AUTO_DISABLED}"
+if [ -f "${AUTO_DISABLED_FILE}" ]; then
+  echo "analytics automatic loop disabled by ${AUTO_DISABLED_FILE}; manual panel runs remain available."
+  while true; do
+    sleep 3600
+  done
+fi
+
+
 INTERVAL_SECONDS="${ANALYTICS_ALERT_INTERVAL_SECONDS:-60}"
 APP_CONTAINER="${ANALYTICS_APP_CONTAINER:-analytics-app-1}"
 APP_URL="${ANALYTICS_ALERT_APP_URL:-http://127.0.0.1:3000/api/panel/alert-runner}"

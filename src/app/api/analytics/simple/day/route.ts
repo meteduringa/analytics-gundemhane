@@ -14,14 +14,26 @@ const noStoreHeaders = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
 };
 
+const canonicalSiteId = (siteId: string) => {
+  const aliases: Record<string, string> = {
+    gercekfethiye: "66b31527-c90e-41ec-9a67-6d003aeee99e",
+    "4a2d21db-fb88-4445-883b-19e0b7e7deb0":
+      "66b31527-c90e-41ec-9a67-6d003aeee99e",
+    "d60207c2-9aa1-4fa8-9de4-6b8464be63ac":
+      "66b31527-c90e-41ec-9a67-6d003aeee99e",
+  };
+  return aliases[siteId] ?? siteId;
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const siteId = searchParams.get("siteId");
+  const siteIdParam = searchParams.get("siteId");
   const dateParam = searchParams.get("date");
 
-  if (!siteId) {
+  if (!siteIdParam) {
     return NextResponse.json({ error: "siteId zorunludur." }, { status: 400 });
   }
+  const siteId = canonicalSiteId(siteIdParam);
 
   const dayDate = parseDayParam(dateParam) ?? new Date();
   const { dayString, start, end } = getIstanbulDayRange(dayDate);

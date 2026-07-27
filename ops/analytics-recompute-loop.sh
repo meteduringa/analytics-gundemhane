@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+AUTO_DISABLED_FILE="${ANALYTICS_AUTO_DISABLED_FILE:-/opt/analytics/ops/AUTO_DISABLED}"
+if [ -f "${AUTO_DISABLED_FILE}" ]; then
+  echo "analytics automatic loop disabled by ${AUTO_DISABLED_FILE}; manual panel runs remain available."
+  while true; do
+    sleep 3600
+  done
+fi
+
+
 INTERVAL_SECONDS="${ANALYTICS_RECOMPUTE_INTERVAL_SECONDS:-60}"
 LOOKBACK_MINUTES="${ANALYTICS_RECOMPUTE_LOOKBACK_MINUTES:-10}"
 STALE_AFTER_SECONDS="${ANALYTICS_RECOMPUTE_STALE_AFTER_SECONDS:-120}"
