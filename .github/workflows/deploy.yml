@@ -59,19 +59,6 @@ jobs:
               echo "Skipping panel alerting SQL; timed out or already applied."
             docker build -t analytics-app:latest .
             docker network inspect analytics_default >/dev/null 2>&1 || docker network create analytics_default
-            ANALYTICS_DATA_DIR="${HOME}/analytics-data"
-            ANALYTICS_BACKUP_DIR="${HOME}/analytics-data-backups"
-            mkdir -p "$ANALYTICS_DATA_DIR" "$ANALYTICS_BACKUP_DIR"
-            if docker ps -a --format '{{.Names}}' | grep -qx analytics-app-1; then
-              if ! docker inspect analytics-app-1 --format '{{range .Mounts}}{{println .Destination}}{{end}}' | grep -qx /app/data; then
-                docker cp analytics-app-1:/app/data/. "$ANALYTICS_DATA_DIR"/ >/dev/null 2>&1 || true
-              fi
-            fi
-            if [ -d "$ANALYTICS_DATA_DIR/bik-test" ]; then
-              BACKUP_PATH="$ANALYTICS_BACKUP_DIR/bik-test-$(date -u +%Y%m%dT%H%M%SZ)"
-              cp -a "$ANALYTICS_DATA_DIR/bik-test" "$BACKUP_PATH"
-              echo "Analytics test data backup: $BACKUP_PATH"
-            fi
             docker rm -f analytics-app-1 >/dev/null 2>&1 || true
             for i in $(seq 1 10); do
               if ! docker ps -a --format '{{.Names}}' | grep -qx analytics-app-1; then
@@ -84,7 +71,6 @@ jobs:
               --restart unless-stopped \
               --network analytics_default \
               --network-alias app \
-              -v "$ANALYTICS_DATA_DIR":/app/data \
               -e NODE_ENV=production \
               -e DATABASE_URL='postgresql://analytics:Analytics2025Pass@analytics-postgres-1:5432/analytics?connection_limit=20&pool_timeout=60' \
               -e AUTH_SECRET='change-me' \
@@ -101,111 +87,10 @@ jobs:
               -e TZ='Europe/Istanbul' \
               analytics-app:latest \
               npm start
-            docker exec analytics-app-1 node <<'NODE'
-            const { once } = require("node:events");
-            const fs = require("node:fs");
-            const fsp = require("node:fs/promises");
-            const path = require("node:path");
-            const readline = require("node:readline");
-
-            const dataDir = "/app/data/bik-test";
-            const dayFromTs = (value) => {
-              const time = Date.parse(value || "");
-              if (Number.isNaN(time)) return null;
-              return new Date(time + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-            };
-
-            const indexFile = async (sourceName, targetPrefix) => {
-              const source = path.join(dataDir, sourceName);
-              if (!fs.existsSync(source)) return { sourceName, days: 0, lines: 0 };
-
-              const tmpRoot = path.join(dataDir, `.tmp-${targetPrefix}-${Date.now()}`);
-              await fsp.mkdir(tmpRoot, { recursive: true });
-              const writers = new Map();
-              let lines = 0;
-
-              const writerFor = (day) => {
-                const existing = writers.get(day);
-                if (existing) return existing;
-                const stream = fs.createWriteStream(path.join(tmpRoot, `${targetPrefix}-${day}.jsonl`), {
-                  flags: "a",
-                });
-                writers.set(day, stream);
-                return stream;
-              };
-
-              const rl = readline.createInterface({
-                input: fs.createReadStream(source, { encoding: "utf8" }),
-                crlfDelay: Infinity,
-              });
-
-              for await (const line of rl) {
-                if (!line.trim()) continue;
-                let parsed;
-                try {
-                  parsed = JSON.parse(line);
-                } catch {
-                  continue;
-                }
-                const day = dayFromTs(parsed.ts);
-                if (!day) continue;
-                const stream = writerFor(day);
-                if (!stream.write(`${line}\n`)) {
-                  await once(stream, "drain");
-                }
-                lines += 1;
-              }
-
-              await Promise.all(
-                [...writers.values()].map(
-                  (stream) =>
-                    new Promise((resolve, reject) => {
-                      stream.end(resolve);
-                      stream.on("error", reject);
-                    })
-                )
-              );
-
-              for (const day of writers.keys()) {
-                await fsp.rename(
-                  path.join(tmpRoot, `${targetPrefix}-${day}.jsonl`),
-                  path.join(dataDir, `${targetPrefix}-${day}.jsonl`)
-                );
-              }
-              await fsp.rm(tmpRoot, { recursive: true, force: true });
-              return { sourceName, days: writers.size, lines };
-            };
-
-            (async () => {
-              if (!fs.existsSync(dataDir)) return;
-              const results = await Promise.all([
-                indexFile("events.jsonl", "legacy-events"),
-                indexFile("rejections.jsonl", "legacy-rejections"),
-              ]);
-              await fsp.writeFile(
-                path.join(dataDir, "legacy-index-state.json"),
-                `${JSON.stringify({ indexedAt: new Date().toISOString(), results }, null, 2)}\n`,
-                "utf8"
-              );
-              console.log("Analytics test data daily index:", JSON.stringify(results));
-            })().catch((error) => {
-              console.error("Analytics test data daily index failed:", error);
-              process.exitCode = 1;
-            });
-            NODE
             docker restart analytics-caddy-1 >/dev/null 2>&1 || true
             for i in $(seq 1 30); do
               if curl -fsS https://giris.elmasistatistik.com.tr/api/health >/dev/null; then
                 echo "Health check passed."
-                PANEL_TOKEN="$(docker exec analytics-app-1 node -e 'const { createHmac } = require("node:crypto"); const payload = Buffer.from(JSON.stringify({ id: "deploy-cache-warm", email: "deploy-cache-warm@local", role: "ADMIN", panelSections: [], exp: Date.now() + 10 * 60 * 1000 }), "utf8").toString("base64url"); const sig = createHmac("sha256", process.env.AUTH_SECRET || "change-me").update(payload).digest("base64url"); process.stdout.write(`${payload}.${sig}`);')"
-                TODAY="$(TZ=Europe/Istanbul date +%F)"
-                for SITE_ID in test-site-haberexpres test-site-gercekfethiye test-site-ozdiyarbakir; do
-                  curl -fsS -m 90 \
-                    -H "Cookie: panel_session=$PANEL_TOKEN" \
-                    "https://giris.elmasistatistik.com.tr/api/panel/test/metrics?siteId=${SITE_ID}&date=${TODAY}" \
-                    >/dev/null || echo "Metric cache warm failed for ${SITE_ID}"
-                done
-                echo "BIK test metrics cache warmed."
                 env \
                   NEXT_PUBLIC_HOST_URL='https://giris.elmasistatistik.com.tr' \
                   TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}' \

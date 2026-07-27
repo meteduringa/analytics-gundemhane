@@ -21,11 +21,6 @@ const buildExternalSnippet = (websiteId: string, hostUrl: string) => `<script as
   data-host-url="${hostUrl}">
 </script>`;
 
-const buildBikTestSnippet = (websiteId: string, hostUrl: string) => `<script async fetchpriority="low" src="${hostUrl}/bik-tracker.js"
-  data-site-id="${websiteId}"
-  data-host-url="${hostUrl}">
-</script>`;
-
 const buildInlineSnippet = (websiteId: string, hostUrl: string) => `<script data-site-id="${websiteId}" data-host-url="${hostUrl}">
 (function () {
   var s = document.currentScript;
@@ -62,7 +57,6 @@ const SettingsPage = () => {
   const [error, setError] = useState("");
   const [snippet, setSnippet] = useState("");
   const [inlineSnippet, setInlineSnippet] = useState("");
-  const [bikSnippet, setBikSnippet] = useState("");
   const [sites, setSites] = useState<
     {
       id: string;
@@ -73,7 +67,7 @@ const SettingsPage = () => {
     }[]
   >([]);
   const [sitesLoading, setSitesLoading] = useState(false);
-  const [copied, setCopied] = useState<"external" | "inline" | "bik" | null>(null);
+  const [copied, setCopied] = useState<"external" | "inline" | null>(null);
   const [hostUrl, setHostUrl] = useState(fallbackHostUrl);
 
   useEffect(() => {
@@ -158,10 +152,8 @@ const SettingsPage = () => {
       const websiteId = payload.website.id as string;
       const external = buildExternalSnippet(websiteId, hostUrl);
       const inline = buildInlineSnippet(websiteId, hostUrl);
-      const bik = buildBikTestSnippet(websiteId, hostUrl);
       setSnippet(external);
       setInlineSnippet(inline);
-      setBikSnippet(bik);
       setSites((prev) => [payload.website, ...prev]);
       setSiteName("");
       setSiteUrl("");
@@ -174,7 +166,7 @@ const SettingsPage = () => {
 
   const handleCopy = async (
     value: string,
-    mode: "external" | "inline" | "bik"
+    mode: "external" | "inline"
   ) => {
     if (!value) return;
     try {
@@ -321,28 +313,6 @@ const SettingsPage = () => {
               </button>
             </div>
 
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">
-              <p className="font-semibold">BİK Test Script</p>
-              <p className="mt-1 text-emerald-700">
-                Yeni BİK uyumlu takip kodu. Eski veriyi bozmaz, ayrı havuza yazar.
-              </p>
-              <pre className="mt-3 whitespace-pre-wrap rounded-xl bg-white p-3 text-[11px] text-emerald-900">
-                {bikSnippet || "BİK test snippet burada görünecek."}
-              </pre>
-              <button
-                type="button"
-                onClick={() => handleCopy(bikSnippet, "bik")}
-                className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-semibold text-emerald-700"
-                disabled={!bikSnippet}
-              >
-                {copied === "bik" ? (
-                  <ClipboardCheck className="h-3 w-3" />
-                ) : (
-                  <Clipboard className="h-3 w-3" />
-                )}
-                Kopyala
-              </button>
-            </div>
           </div>
         </form>
 
@@ -401,16 +371,6 @@ const SettingsPage = () => {
                     >
                       <Clipboard className="h-3 w-3" />
                       Inline Kopyala
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleCopy(buildBikTestSnippet(site.id, hostUrl), "bik")
-                      }
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 font-semibold text-emerald-700"
-                    >
-                      <Clipboard className="h-3 w-3" />
-                      BİK Test Kopyala
                     </button>
                   </div>
                 </div>

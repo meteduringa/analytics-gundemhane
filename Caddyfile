@@ -1,4 +1,10 @@
 giris.elmasistatistik.com.tr {
-    encode zstd gzip
-    reverse_proxy app:3000
+  encode zstd gzip
+
+  @elmasAnalitik path /elmas-analitik /elmas-analitik/*
+  handle @elmasAnalitik {
+    reverse_proxy elmas-analitik-collector:8787
+  }
+
+  reverse_proxy app:3000
 }
