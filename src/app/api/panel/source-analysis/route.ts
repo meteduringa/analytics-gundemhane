@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { readPanelSession } from "@/lib/panel-session";
+import { timingSafeEqual } from "node:crypto";
+import { readPanelSession, type PanelSession } from "@/lib/panel-session";
 import { canAccessPanelWebsite } from "@/lib/panel-website-access";
 
 const POPCENT_REFERRER_HOSTS = [
@@ -66,6 +67,50 @@ const normalizeLandingUrl = (value: string | null) => {
   }
 };
 
+const sourceAnalysisSecret = () =>
+  (
+    process.env.ELMAS_SOURCE_ANALYSIS_SECRET ||
+    process.env.ELMAS_OPS_SOURCE_ANALYSIS_SECRET ||
+    process.env.CLICKADU_EVENT_STOP_SECRET ||
+    ""
+  ).trim();
+
+const tokenFromRequest = (request: Request) => {
+  const bearer = request.headers
+    .get("authorization")
+    ?.replace(/^Bearer\s+/i, "")
+    .trim();
+  return bearer || request.headers.get("x-elmas-source-secret")?.trim() || "";
+};
+
+const safeEqual = (left: string, right: string) => {
+  if (!left || !right) return false;
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
+  );
+};
+
+const internalSourceSession = (): PanelSession => ({
+  id: "elmas-ops-source-analysis",
+  email: "elmas-ops-source-analysis@internal",
+  role: "ADMIN",
+  panelSections: [],
+  exp: Date.now() + 5 * 60 * 1000,
+});
+
+const readSourceAnalysisSession = async (
+  request: Request
+): Promise<PanelSession | null> => {
+  const secret = sourceAnalysisSecret();
+  if (secret && safeEqual(tokenFromRequest(request), secret)) {
+    return internalSourceSession();
+  }
+  return readPanelSession();
+};
+
 type SourceRow = {
   source_website_id: string;
   total_pageviews: bigint;
@@ -96,7 +141,7 @@ type SummaryRow = {
 };
 
 export async function GET(request: Request) {
-  const session = await readPanelSession();
+  const session = await readSourceAnalysisSession(request);
   if (!session) {
     return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
   }
