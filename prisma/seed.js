@@ -4,8 +4,17 @@
   const prisma = new PrismaClient();
 
   async function main() {
-    const email = "admin@analytics.local";
-    const password = "admin123";
+    const email = process.env.ADMIN_SEED_EMAIL?.trim();
+    const password = process.env.ADMIN_SEED_PASSWORD;
+
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Admin seed is disabled in production.");
+    }
+    if (!email || !password || password.length < 16) {
+      throw new Error(
+        "Set ADMIN_SEED_EMAIL and a unique ADMIN_SEED_PASSWORD of at least 16 characters."
+      );
+    }
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return;

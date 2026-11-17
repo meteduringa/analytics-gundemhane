@@ -11,8 +11,8 @@ services:
     build: .
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://analytics:Analytics2025Pass@analytics-postgres-1:5432/analytics
-      AUTH_SECRET: change-me
+      DATABASE_URL: ${ANALYTICS_DATABASE_URL:?Set ANALYTICS_DATABASE_URL}
+      AUTH_SECRET: ${ANALYTICS_AUTH_SECRET:?Set ANALYTICS_AUTH_SECRET}
       NEXTAUTH_URL: https://giris.elmasistatistik.com.tr
       NEXT_PUBLIC_HOST_URL: https://giris.elmasistatistik.com.tr
       REDIS_URL: redis://analytics-redis-1:6379
@@ -43,7 +43,7 @@ services:
     environment:
       POSTGRES_DB: analytics
       POSTGRES_USER: analytics
-      POSTGRES_PASSWORD: Analytics2025Pass
+      POSTGRES_PASSWORD: ${ANALYTICS_POSTGRES_PASSWORD:?Set ANALYTICS_POSTGRES_PASSWORD}
       TZ: Europe/Istanbul
     volumes:
       - postgres_data:/var/lib/postgresql/data

@@ -2,8 +2,6 @@ name: Deploy to VPS
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["main"]
 
 concurrency:
   group: analytics-prod-deploy
@@ -18,13 +16,23 @@ jobs:
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          ANALYTICS_DATABASE_URL: ${{ secrets.ANALYTICS_DATABASE_URL }}
+          ANALYTICS_AUTH_SECRET: ${{ secrets.ANALYTICS_AUTH_SECRET }}
         with:
           host: 188.245.176.56
           username: mete
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
+          envs: ANALYTICS_DATABASE_URL,ANALYTICS_AUTH_SECRET
           script: |
             set -euo pipefail
+            if [ -z "${ANALYTICS_DATABASE_URL:-}" ] || [ -z "${ANALYTICS_AUTH_SECRET:-}" ] || [ "${#ANALYTICS_AUTH_SECRET}" -lt 32 ]; then
+              echo "Missing database URL or strong auth secret; deployment aborted before touching containers."
+              exit 1
+            fi
+            export DATABASE_URL="$ANALYTICS_DATABASE_URL"
+            export AUTH_SECRET="$ANALYTICS_AUTH_SECRET"
             run_sudo() {
               if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
                 sudo "$@"
@@ -72,8 +80,8 @@ jobs:
               --network analytics_default \
               --network-alias app \
               -e NODE_ENV=production \
-              -e DATABASE_URL='postgresql://analytics:Analytics2025Pass@analytics-postgres-1:5432/analytics?connection_limit=20&pool_timeout=60' \
-              -e AUTH_SECRET='change-me' \
+              -e DATABASE_URL \
+              -e AUTH_SECRET \
               -e NEXTAUTH_URL='https://giris.elmasistatistik.com.tr' \
               -e NEXT_PUBLIC_HOST_URL='https://giris.elmasistatistik.com.tr' \
               -e REDIS_URL='redis://analytics-redis-1:6379' \

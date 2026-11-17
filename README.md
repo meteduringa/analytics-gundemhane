@@ -242,7 +242,12 @@ grep -n "NEXT_PUBLIC_HOST_URL" src/components/analytics/AdminWebsites.tsx src/ap
 
 Cache'siz image rebuild + recreate:
 
+`ANALYTICS_DATABASE_URL` ve en az 32 karakterlik `ANALYTICS_AUTH_SECRET`
+güvenli ortam değişkenleri olarak sağlanmalıdır. Eski açık değerler kullanılmamalıdır.
+
 ```bash
+: "${ANALYTICS_DATABASE_URL:?Set ANALYTICS_DATABASE_URL}"
+: "${ANALYTICS_AUTH_SECRET:?Set ANALYTICS_AUTH_SECRET}"
 DOCKER_BUILDKIT=1 docker build --no-cache -t analytics-app:latest .
 docker rm -f analytics-app-1
 docker run -d \
@@ -251,8 +256,8 @@ docker run -d \
   --network analytics_default \
   --network-alias app \
   -e NODE_ENV=production \
-  -e DATABASE_URL='postgresql://analytics:Analytics2025Pass@analytics-postgres-1:5432/analytics?connection_limit=20&pool_timeout=60' \
-  -e AUTH_SECRET='change-me' \
+  -e DATABASE_URL="$ANALYTICS_DATABASE_URL" \
+  -e AUTH_SECRET="$ANALYTICS_AUTH_SECRET" \
   -e NEXTAUTH_URL='https://giris.elmasistatistik.com.tr' \
   -e NEXT_PUBLIC_HOST_URL='https://giris.elmasistatistik.com.tr' \
   -e REDIS_URL='redis://analytics-redis-1:6379' \

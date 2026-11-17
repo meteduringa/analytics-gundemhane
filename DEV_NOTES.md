@@ -23,7 +23,7 @@ dev ve prod devam etmek icindir.
 - Caddyfile: `/var/www/analytics-gundemhane/Caddyfile`
 
 ## Deploy akisi (Actions)
-- `main` branch'e push -> GitHub Actions `Deploy to VPS`.
+- Guvenlik nedeniyle `Deploy to VPS` yalniz elle baslatilir; `main` push'u dagitim yapmaz.
 - Sunucuda:
   ```
   git pull origin main
@@ -36,6 +36,9 @@ dev ve prod devam etmek icindir.
 - `SSH_USER` = root veya kullanici
 - `SSH_KEY` = private key (OpenSSH format)
 - `SSH_PORT` = 22 (opsiyonel)
+- `ANALYTICS_DATABASE_URL` = parolasi degistirilmis veritabani baglantisi
+- `ANALYTICS_AUTH_SECRET` = en az 32 karakterlik yeni rastgele oturum anahtari
+- Eski acik degerleri yeniden kullanma; ikisi de eksikse dagitim baslamaz.
 
 ## Docker compose kritik ayar
 - Sunucuda bir kez:
@@ -44,14 +47,10 @@ dev ve prod devam etmek icindir.
   ```
   Bu, volume isimlerini sabitler (veri kaybini onler).
 
-## Giris bilgileri (seed)
-- Email: `admin@analytics.local`
-- Sifre: `admin123`
-- Seed:
-  ```
-  cd /var/www/analytics-gundemhane
-  npx prisma db seed
-  ```
+## Yerel gelistirme icin admin seed
+- Uretimde seed calistirilmaz. Ornek yonetici sifresi depoda tutulmaz.
+- Gelistirme ortaminda `ADMIN_SEED_EMAIL` ve en az 16 karakterlik `ADMIN_SEED_PASSWORD`
+  ayarla; sonra `npx prisma db seed` calistir.
 
 ## Auth akisi
 - Frontend login -> `/api/panel/login` (DB kontrolu)
